@@ -122,6 +122,8 @@ type Model struct {
 	Width              int
 	IsGoalMode         bool
 	GoalText           string
+	CursorRow          int
+	CursorCol          int
 
 	// Clipboard copy
 	LastRawResponse string

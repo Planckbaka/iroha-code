@@ -33,7 +33,7 @@ func (r *RawRenderer) Reset() {
 }
 
 // Draw performs a differential redraw to update the screen from r.oldLines to newLines.
-func (r *RawRenderer) Draw(newLines []string) {
+func (r *RawRenderer) Draw(newLines []string, cursorRow, cursorCol int) {
 	// Restore hardware cursor position to the bottom of the screen
 	if r.cursorUpLines > 0 {
 		fmt.Fprintf(r.out, "\x1b[%dB", r.cursorUpLines)
@@ -119,27 +119,15 @@ func (r *RawRenderer) Draw(newLines []string) {
 	r.oldLines = make([]string, len(newLines))
 	copy(r.oldLines, newLines)
 
-	// Position terminal hardware cursor exactly on the software block cursor "█"
+	// Position terminal hardware cursor exactly on the calculated coordinates
 	// to ensure IME input method candidate windows align perfectly.
-	cursorRowIndex := -1
-	cursorColIndex := 0
-	for i := len(newLines) - 1; i >= 0; i-- {
-		if idx := strings.Index(newLines[i], "█"); idx != -1 {
-			cursorRowIndex = i
-			prefix := newLines[i][:idx]
-			// Use lipgloss width to measure actual character cell width of prefix
-			cursorColIndex = lipgloss.Width(prefix) + 1
-			break
-		}
-	}
-
-	if cursorRowIndex != -1 {
-		up := len(newLines) - 1 - cursorRowIndex
+	if cursorRow != -1 {
+		up := len(newLines) - cursorRow
 		if up > 0 {
 			fmt.Fprintf(r.out, "\x1b[%dA", up)
 		}
 		// Carriage return + move right to the software cursor column
-		fmt.Fprintf(r.out, "\r\x1b[%dC", cursorColIndex-1)
+		fmt.Fprintf(r.out, "\r\x1b[%dC", cursorCol-1)
 		r.cursorUpLines = up
 	}
 }
