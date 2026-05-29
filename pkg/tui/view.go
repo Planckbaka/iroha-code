@@ -621,12 +621,32 @@ func FormatToolActivity(name string, args any) string {
 			return fmt.Sprintf("Write file %s", path)
 		}
 		return "Write file"
-	case "grep":
+	case "file_edit":
+		path := getStr("path", "TargetFile", "AbsolutePath")
+		if path != "" {
+			return fmt.Sprintf("Edit file %s", path)
+		}
+		return "Edit file"
+	case "file_edit_batch":
+		return "Apply atomic batch file edits"
+	case "list_directory":
+		path := getStr("path", "DirectoryPath", "Cwd")
+		if path != "" {
+			return fmt.Sprintf("List directory %s", path)
+		}
+		return "List directory"
+	case "search_grep":
 		pattern := getStr("pattern", "query", "Query")
 		if pattern != "" {
-			return fmt.Sprintf("Search pattern/regex %q", pattern)
+			return fmt.Sprintf("Search pattern %q", pattern)
 		}
-		return "Search file contents"
+		return "Search pattern"
+	case "find_files":
+		pattern := getStr("pattern", "Query")
+		if pattern != "" {
+			return fmt.Sprintf("Find files matching %q", pattern)
+		}
+		return "Find files"
 	case "shell_run":
 		cmd := getStr("command", "CommandLine")
 		if cmd != "" {
@@ -647,6 +667,26 @@ func FormatToolActivity(name string, args any) string {
 		return "Save cross-session memory"
 	case "memory_list":
 		return "List cross-session memories"
+	case "memory_search":
+		query := getStr("query", "Query")
+		if query != "" {
+			return fmt.Sprintf("Search cross-session memories %q", query)
+		}
+		return "Search cross-session memories"
+	case "memory_update":
+		nameVal := getStr("name", "Name")
+		if nameVal != "" {
+			return fmt.Sprintf("Update cross-session memory %q", nameVal)
+		}
+		return "Update cross-session memory"
+	case "memory_delete":
+		nameVal := getStr("name", "Name")
+		if nameVal != "" {
+			return fmt.Sprintf("Delete cross-session memory %q", nameVal)
+		}
+		return "Delete cross-session memory"
+	case "memory_dream":
+		return "Consolidate persistent memories"
 	case "task_create":
 		id := getStr("id", "ID", "TaskId")
 		if id != "" {
@@ -699,6 +739,24 @@ func FormatToolActivity(name string, args any) string {
 		return "Read agent inbox"
 	case "broadcast":
 		return "Broadcast to agent team"
+	case "spawn_subagent":
+		role := getStr("role", "Role")
+		if role != "" {
+			return fmt.Sprintf("Spawn subagent %s", role)
+		}
+		return "Spawn subagent"
+	case "web_fetch":
+		url := getStr("url", "Url")
+		if url != "" {
+			return fmt.Sprintf("Fetch web page %s", url)
+		}
+		return "Fetch web page"
+	case "web_search":
+		query := getStr("query", "Query")
+		if query != "" {
+			return fmt.Sprintf("Search the web for %q", query)
+		}
+		return "Search the web"
 	case "worktree_create":
 		nameVal := getStr("name", "Name")
 		if nameVal != "" {
@@ -715,6 +773,16 @@ func FormatToolActivity(name string, args any) string {
 		return "Close/clean up git worktree"
 	case "mcp_server_list":
 		return "List configured MCP servers"
+	case "lsp_goto_definition":
+		return "LSP: Go to definition"
+	case "lsp_find_references":
+		return "LSP: Find references"
+	case "lsp_document_symbols":
+		return "LSP: Extract document symbols"
+	case "lsp_hover":
+		return "LSP: Hover symbol"
+	case "lsp_diagnostics":
+		return "LSP: Fetch server diagnostics"
 	default:
 		argsStr := FormatToolArgs(args)
 		if argsStr != "" {
@@ -776,11 +844,12 @@ func RenderShellStreamArea(lines []string, cmd string, width int) string {
 // getToolCategoryTheme returns style details and prefix icons for categorized tools.
 func getToolCategoryTheme(name string) (lipgloss.Color, string, string) {
 	switch name {
-	case "file_read", "file_write":
+	case "file_read", "file_write", "file_edit", "file_edit_batch", "list_directory", "search_grep", "find_files",
+		"lsp_goto_definition", "lsp_find_references", "lsp_document_symbols", "lsp_hover", "lsp_diagnostics":
 		return ColorPrimary, "📄", "File Operations"
-	case "shell_run", "background_run", "check_background":
+	case "shell_run", "background_run", "check_background", "web_fetch", "web_search":
 		return ColorWarning, "🐚", "Command Execution"
-	case "spawn_teammate", "list_teammates", "send_message", "read_inbox", "broadcast":
+	case "spawn_teammate", "list_teammates", "send_message", "read_inbox", "broadcast", "spawn_subagent":
 		return ColorSecondary, "🤖", "Agent Collaboration"
 	default:
 		return lipgloss.Color("#A855F7"), "🔌", "External Tools"
