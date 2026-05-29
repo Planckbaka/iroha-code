@@ -727,7 +727,7 @@ func FormatToolActivity(name string, args any) string {
 // maxVisibleStreamLines is the maximum number of lines to display in the shell stream area
 const maxVisibleStreamLines = 15
 
-// RenderShellStreamArea renders a bordered area showing real-time shell output
+// RenderShellStreamArea renders a flat console container showing real-time shell output
 func RenderShellStreamArea(lines []string, cmd string, width int) string {
 	if len(lines) == 0 {
 		return ""
@@ -742,60 +742,83 @@ func RenderShellStreamArea(lines []string, cmd string, width int) string {
 
 	var sb strings.Builder
 
+	// Top boundary line
+	sepLen := width - 4
+	if sepLen <= 0 {
+		sepLen = 40
+	}
+	separator := lipgloss.NewStyle().Foreground(lipgloss.Color("#475569")).Render(strings.Repeat("┄", sepLen))
+	sb.WriteString("  " + separator + "\n")
+
 	// Header with command name
 	cmdDisplay := cmd
 	if len(cmdDisplay) > width-14 {
 		cmdDisplay = cmdDisplay[:width-17] + "..."
 	}
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorSecondary).Render(" shell: "))
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("$ " + cmdDisplay))
-	sb.WriteString("\n")
+	sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorWarning).Render("🐚 ") + lipgloss.NewStyle().Foreground(lipgloss.Color("#94A3B8")).Render("console ") + lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("$ "+cmdDisplay) + "\n")
 
 	if truncated > 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).
-			Render(fmt.Sprintf("  ... (truncated %d earlier lines)", truncated)))
+			Render(fmt.Sprintf("    ... (已截断 %d 行历史输出)", truncated)))
 		sb.WriteString("\n")
 	}
 
 	for _, line := range visibleLines {
-		sb.WriteString("  " + line + "\n")
+		sb.WriteString("    " + lipgloss.NewStyle().Foreground(lipgloss.Color("#CBD5E1")).Render(line) + "\n")
 	}
 
-	areaStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSecondary).
-		Padding(0, 1).
-		MarginTop(1).
-		Width(width - 4)
+	// Bottom boundary line
+	sb.WriteString("  " + separator + "\n")
 
-	return areaStyle.Render(sb.String())
+	return sb.String()
+}
+
+// getToolCategoryTheme returns style details and prefix icons for categorized tools.
+func getToolCategoryTheme(name string) (lipgloss.Color, string, string) {
+	switch name {
+	case "file_read", "file_write":
+		return ColorPrimary, "📄", "File Operations"
+	case "shell_run", "background_run", "check_background":
+		return ColorWarning, "🐚", "Command Execution"
+	case "spawn_teammate", "list_teammates", "send_message", "read_inbox", "broadcast":
+		return ColorSecondary, "🤖", "Agent Collaboration"
+	default:
+		return lipgloss.Color("#A855F7"), "🔌", "External Tools"
+	}
 }
 
 // RenderToolErrorCard renders a minimal failure card for tool execution
 func RenderToolErrorCard(name string, args any, duration time.Duration, err error) string {
-	var sb strings.Builder
+	color, icon, _ := getToolCategoryTheme(name)
 	activity := FormatToolActivity(name, args)
-	sb.WriteString(fmt.Sprintf("%s %s  %v\n", lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("[fail]"), activity, duration.Round(time.Millisecond)))
+
+	failStyled := lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("✗")
+	iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
+	textStyled := lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render(activity)
+	durStyled := lipgloss.NewStyle().Foreground(ColorTextMuted).Render(fmt.Sprintf("(%s)", duration.Round(time.Millisecond).String()))
+
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("  %s %s %s %s\n", failStyled, iconStyled, textStyled, durStyled))
 	if err != nil {
-		sb.WriteString(fmt.Sprintf("       %s", err.Error()))
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorDanger).Render(fmt.Sprintf("    ↳ Error: %s", err.Error())))
 	} else {
-		sb.WriteString("       operation failed")
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorDanger).Render("    ↳ Error: operation failed"))
 	}
 
-	cardStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorDanger).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String())
+	return sb.String()
 }
 
 // RenderToolSuccessCard renders a minimal success log for tool execution
 func RenderToolSuccessCard(name string, args any, duration time.Duration) string {
+	color, icon, _ := getToolCategoryTheme(name)
 	activity := FormatToolActivity(name, args)
-	return fmt.Sprintf("%s %s  %s", lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓"), activity, lipgloss.NewStyle().Foreground(ColorTextMuted).Render(duration.Round(time.Millisecond).String()))
+
+	tickStyled := lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓")
+	iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
+	textStyled := lipgloss.NewStyle().Foreground(color).Bold(true).Render(activity)
+	durStyled := lipgloss.NewStyle().Foreground(ColorTextMuted).Render(fmt.Sprintf("(%s)", duration.Round(time.Millisecond).String()))
+
+	return fmt.Sprintf("  %s %s %s %s", tickStyled, iconStyled, textStyled, durStyled)
 }
 
 // RenderTeamDashboard renders a clean team roster card

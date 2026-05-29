@@ -291,10 +291,24 @@ func (m *Model) Render() []string {
 	switch m.State {
 	case stateThinking:
 		if m.ActiveTool.Running {
+			color, icon, _ := getToolCategoryTheme(m.ActiveTool.Name)
 			activity := FormatToolActivity(m.ActiveTool.Name, m.ActiveTool.Args)
-			lines = append(lines, "", StyleAgentMsg.Render("🤖 "+activity))
+			
+			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+			spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
+			
+			spinnerStyled := lipgloss.NewStyle().Foreground(ColorSecondary).Render(spinnerFrame)
+			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
+			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
+			
+			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
 		} else {
-			lines = append(lines, "", StyleAgentMsg.Render("🤖 thinking..."))
+			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+			spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
+			
+			spinnerStyled := lipgloss.NewStyle().Foreground(ColorPrimary).Render(spinnerFrame)
+			textStyled := lipgloss.NewStyle().Foreground(ColorPrimary).Italic(true).Render("thinking...")
+			lines = append(lines, "", "  "+spinnerStyled+" "+textStyled)
 		}
 	case stateStreaming:
 		fullText := m.RenderedText
@@ -307,8 +321,17 @@ func (m *Model) Render() []string {
 			lines = append(lines, strings.Split(rendered, "\n")...)
 		}
 		if m.ActiveTool.Running {
+			color, icon, _ := getToolCategoryTheme(m.ActiveTool.Name)
 			activity := FormatToolActivity(m.ActiveTool.Name, m.ActiveTool.Args)
-			lines = append(lines, "", StyleAgentMsg.Render("🤖 "+activity))
+			
+			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+			spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
+			
+			spinnerStyled := lipgloss.NewStyle().Foreground(ColorSecondary).Render(spinnerFrame)
+			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
+			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
+			
+			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
 		}
 	case stateConfirming:
 		if m.ConfirmEditActive {
