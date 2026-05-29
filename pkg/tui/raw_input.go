@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"unicode/utf8"
 
 	"golang.org/x/term"
 )
@@ -180,18 +181,9 @@ func decodeRune(b []byte) (rune, int) {
 	if len(b) == 0 {
 		return 0, 0
 	}
-	r := rune(b[0])
-	if r < 0x80 {
-		return r, 1
+	r, size := utf8.DecodeRune(b)
+	if r == utf8.RuneError {
+		return rune(b[0]), 1
 	}
-	if r&0xE0 == 0xC0 && len(b) >= 2 {
-		return (r&0x1F)<<6 | rune(b[1]&0x3F), 2
-	}
-	if r&0xF0 == 0xE0 && len(b) >= 3 {
-		return (r&0x0F)<<12 | rune(b[1]&0x3F)<<6 | rune(b[2]&0x3F), 3
-	}
-	if r&0xF8 == 0xF0 && len(b) >= 4 {
-		return (r&0x07)<<18 | rune(b[1]&0x3F)<<12 | rune(b[2]&0x3F)<<6 | rune(b[3]&0x3F), 4
-	}
-	return r, 1
+	return r, size
 }

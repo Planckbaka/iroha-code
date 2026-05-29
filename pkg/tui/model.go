@@ -101,7 +101,11 @@ type DoctorResultMsg struct {
 	Report string
 }
 
-// Model represents the active TUI state controller
+// Model represents the active TUI state controller.
+//
+// Deprecated: Use App (app.go) instead. Model is retained only as an integration
+// shim for backward compatibility. New code should use App, Component interface,
+// and callback-based component communication.
 type Model struct {
 	State              TuiState
 	InputBuffer        []rune

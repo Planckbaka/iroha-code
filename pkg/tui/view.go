@@ -24,9 +24,9 @@ func RenderMarkdown(raw string) string {
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "+ ") || trimmed == "+" {
-			lines[i] = "\x1b[32m" + line + "\x1b[0m"
+			lines[i] = lipgloss.NewStyle().Foreground(ColorSuccess).Render(line)
 		} else if strings.HasPrefix(trimmed, "- ") || trimmed == "-" {
-			lines[i] = "\x1b[31m" + line + "\x1b[0m"
+			lines[i] = lipgloss.NewStyle().Foreground(ColorDanger).Render(line)
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -775,7 +775,7 @@ func RenderShellStreamArea(lines []string, cmd string, width int) string {
 func RenderToolErrorCard(name string, args any, duration time.Duration, err error) string {
 	var sb strings.Builder
 	activity := FormatToolActivity(name, args)
-	sb.WriteString(fmt.Sprintf("\x1b[1;31m[fail]\x1b[0m %s  %v\n", activity, duration.Round(time.Millisecond)))
+	sb.WriteString(fmt.Sprintf("%s %s  %v\n", lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("[fail]"), activity, duration.Round(time.Millisecond)))
 	if err != nil {
 		sb.WriteString(fmt.Sprintf("       %s", err.Error()))
 	} else {
@@ -795,7 +795,7 @@ func RenderToolErrorCard(name string, args any, duration time.Duration, err erro
 // RenderToolSuccessCard renders a minimal success log for tool execution
 func RenderToolSuccessCard(name string, args any, duration time.Duration) string {
 	activity := FormatToolActivity(name, args)
-	return fmt.Sprintf("\x1b[32m✓\x1b[0m %s  \x1b[2m%v\x1b[0m", activity, duration.Round(time.Millisecond))
+	return fmt.Sprintf("%s %s  %s", lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓"), activity, lipgloss.NewStyle().Foreground(ColorTextMuted).Render(duration.Round(time.Millisecond).String()))
 }
 
 // RenderTeamDashboard renders a clean team roster card
