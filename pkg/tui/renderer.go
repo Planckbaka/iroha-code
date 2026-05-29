@@ -31,6 +31,17 @@ func (r *RawRenderer) Reset() {
 
 // Draw performs a differential redraw to update the screen from r.oldLines to newLines.
 func (r *RawRenderer) Draw(newLines []string) {
+	// Flatten all elements in newLines by splitting by \n to ensure 1 element = 1 console row
+	var flatLines []string
+	for _, line := range newLines {
+		parts := strings.Split(line, "\n")
+		for _, part := range parts {
+			part = strings.ReplaceAll(part, "\r", "")
+			flatLines = append(flatLines, part)
+		}
+	}
+	newLines = flatLines
+
 	// Enable Synchronized Output to prevent tearing and screen flicker in modern terminals
 	fmt.Fprint(r.out, "\x1b[?2026h")
 	defer fmt.Fprint(r.out, "\x1b[?2026l")

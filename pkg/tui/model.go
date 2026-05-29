@@ -288,9 +288,9 @@ func (m *Model) Render() []string {
 	case stateThinking:
 		if m.ActiveTool.Running {
 			activity := FormatToolActivity(m.ActiveTool.Name, m.ActiveTool.Args)
-			lines = append(lines, "\n"+StyleAgentMsg.Render("🤖 "+activity))
+			lines = append(lines, "", StyleAgentMsg.Render("🤖 "+activity))
 		} else {
-			lines = append(lines, "\n"+StyleAgentMsg.Render("🤖 thinking..."))
+			lines = append(lines, "", StyleAgentMsg.Render("🤖 thinking..."))
 		}
 	case stateStreaming:
 		fullText := m.RenderedText
@@ -298,19 +298,28 @@ func (m *Model) Render() []string {
 			fullText = RenderMarkdown(m.StreamedText)
 		}
 		if fullText != "" {
-			lines = append(lines, "\n"+StyleAgentMsg.Render(fullText))
+			rendered := StyleAgentMsg.Render(fullText)
+			lines = append(lines, "")
+			lines = append(lines, strings.Split(rendered, "\n")...)
 		}
 		if m.ActiveTool.Running {
 			activity := FormatToolActivity(m.ActiveTool.Name, m.ActiveTool.Args)
-			lines = append(lines, "\n"+StyleAgentMsg.Render("🤖 "+activity))
+			lines = append(lines, "", StyleAgentMsg.Render("🤖 "+activity))
 		}
 	case stateConfirming:
 		if m.ConfirmEditActive {
-			lines = append(lines, "\n"+lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("Editing Tool Arguments"))
-			lines = append(lines, "  Press [Enter] to run with modified arguments. Press [Esc] to cancel.\n")
+			lines = append(lines, "", lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("Editing Tool Arguments"))
+			lines = append(lines, "  Press [Enter] to run with modified arguments. Press [Esc] to cancel.", "")
 		} else {
 			card := RenderConfirmCardWithDiff(m.ConfirmationPrompt, m.ConfirmSelectIndex, m.ConfirmDiffText != "", m.ConfirmDiffActive)
-			lines = append(lines, "\n"+StyleAgentMsg.Render(RenderMarkdown(m.StreamedText)+"\n"+card))
+			content := RenderMarkdown(m.StreamedText)
+			if content != "" {
+				content += "\n"
+			}
+			content += card
+			rendered := StyleAgentMsg.Render(content)
+			lines = append(lines, "")
+			lines = append(lines, strings.Split(rendered, "\n")...)
 			if m.ConfirmDiffActive && m.ConfirmDiffText != "" {
 				lines = append(lines, strings.Split(m.ConfirmDiffText, "\n")...)
 			}
@@ -349,7 +358,7 @@ func (m *Model) Render() []string {
 
 func (m *Model) renderPermissionSelectScreen() []string {
 	var lines []string
-	lines = append(lines, "\n"+lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("🛡️ Select Safety Permission Mode"))
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("🛡️ Select Safety Permission Mode"))
 	lines = append(lines, lipgloss.NewStyle().Foreground(ColorTextMuted).Render("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
 	
 	modes := []struct {
@@ -370,13 +379,13 @@ func (m *Model) renderPermissionSelectScreen() []string {
 		}
 		lines = append(lines, fmt.Sprintf("%s%s - %s", prefix, style.Render(md.Name), md.Desc))
 	}
-	lines = append(lines, "\n"+lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).Render("  Up/Down - Move   Enter - Select   Ctrl+C - Exit"))
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).Render("  Up/Down - Move   Enter - Select   Ctrl+C - Exit"))
 	return lines
 }
 
 func (m *Model) renderSessionSelectScreen() []string {
 	var lines []string
-	lines = append(lines, "\n"+lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Render("📁 Switch Active Session Workspace"))
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Render("📁 Switch Active Session Workspace"))
 	lines = append(lines, lipgloss.NewStyle().Foreground(ColorTextMuted).Render("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
 
 	// Option 0: Start new session
@@ -401,7 +410,7 @@ func (m *Model) renderSessionSelectScreen() []string {
 		}
 		lines = append(lines, fmt.Sprintf("%s%s [%s] %s", prefix, style.Render(s.ID[:8]), s.LastUpdateTime.Format("01-02 15:04"), summary))
 	}
-	lines = append(lines, "\n"+lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).Render("  Up/Down - Move   Enter - Select   Esc - Back   Ctrl+C - Exit"))
+	lines = append(lines, "", lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).Render("  Up/Down - Move   Enter - Select   Esc - Back   Ctrl+C - Exit"))
 	return lines
 }
 
