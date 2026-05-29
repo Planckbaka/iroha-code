@@ -6,14 +6,16 @@ import (
 	"strings"
 
 	"github.com/muesli/termenv"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // RawRenderer manages frame buffers, terminal sizes, and performs flicker-free 
 // differential redraws on the terminal's main screen.
 type RawRenderer struct {
-	out      io.Writer
-	oldLines []string
-	profile  termenv.Profile
+	out           io.Writer
+	oldLines      []string
+	profile       termenv.Profile
+	cursorUpLines int
 }
 
 // NewRawRenderer initializes a new RawRenderer with default color profile.
@@ -27,10 +29,17 @@ func NewRawRenderer(out io.Writer) *RawRenderer {
 // Reset clears the cached screen state buffer.
 func (r *RawRenderer) Reset() {
 	r.oldLines = nil
+	r.cursorUpLines = 0
 }
 
 // Draw performs a differential redraw to update the screen from r.oldLines to newLines.
 func (r *RawRenderer) Draw(newLines []string) {
+	// Restore hardware cursor position to the bottom of the screen
+	if r.cursorUpLines > 0 {
+		fmt.Fprintf(r.out, "\x1b[%dB", r.cursorUpLines)
+		r.cursorUpLines = 0
+	}
+
 	// Flatten all elements in newLines by splitting by \n to ensure 1 element = 1 console row
 	var flatLines []string
 	for _, line := range newLines {
@@ -109,4 +118,28 @@ func (r *RawRenderer) Draw(newLines []string) {
 	// Cache the drawn lines
 	r.oldLines = make([]string, len(newLines))
 	copy(r.oldLines, newLines)
+
+	// Position terminal hardware cursor exactly on the software block cursor "█"
+	// to ensure IME input method candidate windows align perfectly.
+	cursorRowIndex := -1
+	cursorColIndex := 0
+	for i := len(newLines) - 1; i >= 0; i-- {
+		if idx := strings.Index(newLines[i], "█"); idx != -1 {
+			cursorRowIndex = i
+			prefix := newLines[i][:idx]
+			// Use lipgloss width to measure actual character cell width of prefix
+			cursorColIndex = lipgloss.Width(prefix) + 1
+			break
+		}
+	}
+
+	if cursorRowIndex != -1 {
+		up := len(newLines) - 1 - cursorRowIndex
+		if up > 0 {
+			fmt.Fprintf(r.out, "\x1b[%dA", up)
+		}
+		// Carriage return + move right to the software cursor column
+		fmt.Fprintf(r.out, "\r\x1b[%dC", cursorColIndex-1)
+		r.cursorUpLines = up
+	}
 }
