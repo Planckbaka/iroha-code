@@ -12,7 +12,6 @@ import (
 	"iroha/pkg/llm"
 	"iroha/pkg/tui"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 )
 
@@ -207,17 +206,8 @@ func main() {
 		initialMode = agent.ModeDefault
 	}
 
-	// 5. Create the TUI model
-	m := tui.NewModel(runner, sessionID, startInSessionPicker, initialMode, startupPrompt)
-
-	// 6. Create the Bubble Tea Program
-	p := tea.NewProgram(m, tea.WithAltScreen())
-
-	// Inject the program reference back into the model via ProgramRef pointer
-	m.ProgramRef.P = p
-
-	// 7. Run the TUI Program
-	if _, err := p.Run(); err != nil {
+	// 5. Run the standard raw interactive TUI loop (Pi-style)
+	if err := tui.RunRawTUI(runner, sessionID, startInSessionPicker, initialMode, startupPrompt); err != nil {
 		fmt.Printf("\x1b[31m[TUI runtime error] %v\x1b[0m\n", err)
 		os.Exit(1)
 	}
