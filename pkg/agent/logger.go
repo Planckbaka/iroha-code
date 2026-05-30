@@ -53,7 +53,20 @@ func RedactSecrets(text string) string {
 	return text
 }
 
+// AuditEvent represents a strongly-typed structured event schema.
+type AuditEvent struct {
+	Timestamp  string         `json:"timestamp"`
+	Level      string         `json:"level"`
+	Category   string         `json:"category"`
+	SessionID  string         `json:"session_id,omitempty"`
+	Event      string         `json:"event,omitempty"`
+	Message    string         `json:"message"`
+	DurationMS int64          `json:"duration_ms,omitempty"`
+	Metadata   map[string]any `json:"metadata,omitempty"`
+}
+
 // AuditLogRecord represents a single structured log line in JSONL format.
+// (Maintained for full backward-compatibility with existing tests).
 type AuditLogRecord struct {
 	Timestamp  string         `json:"timestamp"`
 	Level      LogLevel       `json:"level"`
@@ -117,8 +130,26 @@ func (lm *LoggerManager) SetSessionID(sessionID string) {
 	}
 }
 
-// Log records a structured log to both JSONL and plain-text.
+// Log records a structured log to both JSONL and plain-text by wrapping it in an AuditEvent.
 func (lm *LoggerManager) Log(level LogLevel, category LogCategory, event string, message string, durationMS int64, metadata map[string]any) {
+	ae := AuditEvent{
+		Level:      string(level),
+		Category:   string(category),
+		Event:      event,
+		Message:    message,
+		DurationMS: durationMS,
+		Metadata:   metadata,
+	}
+	lm.LogWrite(ae)
+}
+
+// LogWrite package-level helper logs a strongly-typed AuditEvent.
+func LogWrite(event AuditEvent) {
+	GlobalLogger.LogWrite(event)
+}
+
+// LogWrite records a strongly-typed AuditEvent to both JSONL and plain-text.
+func (lm *LoggerManager) LogWrite(event AuditEvent) {
 	lm.mu.Lock()
 	defer lm.mu.Unlock()
 
@@ -140,21 +171,16 @@ func (lm *LoggerManager) Log(level LogLevel, category LogCategory, event string,
 		}
 	}
 
-	ts := time.Now().Format(time.RFC3339)
-	record := AuditLogRecord{
-		Timestamp:  ts,
-		Level:      level,
-		SessionID:  lm.sessionID,
-		Category:   category,
-		Event:      event,
-		Message:    message,
-		DurationMS: durationMS,
-		Metadata:   metadata,
+	if event.Timestamp == "" {
+		event.Timestamp = time.Now().Format(time.RFC3339)
+	}
+	if event.SessionID == "" {
+		event.SessionID = lm.sessionID
 	}
 
 	// 1. Write structured JSON Lines
 	if lm.jsonlFile != nil {
-		bytes, err := json.Marshal(record)
+		bytes, err := json.Marshal(event)
 		if err == nil {
 			redacted := RedactSecrets(string(bytes))
 			_, _ = lm.jsonlFile.Write(append([]byte(redacted), '\n'))
@@ -164,20 +190,25 @@ func (lm *LoggerManager) Log(level LogLevel, category LogCategory, event string,
 	// 2. Write beautiful plain text log
 	if lm.plainFile != nil {
 		var metaStr string
-		if len(metadata) > 0 {
-			metaBytes, err := json.Marshal(metadata)
+		if len(event.Metadata) > 0 {
+			metaBytes, err := json.Marshal(event.Metadata)
 			if err == nil {
 				metaStr = fmt.Sprintf(" | metadata=%s", string(metaBytes))
 			}
 		}
 
 		var durStr string
-		if durationMS > 0 {
-			durStr = fmt.Sprintf(" | duration=%dms", durationMS)
+		if event.DurationMS > 0 {
+			durStr = fmt.Sprintf(" | duration=%dms", event.DurationMS)
 		}
 
-		plainMsg := fmt.Sprintf("[%s] [%s] [%s] [%s] %s%s%s\n",
-			ts, level, category, event, message, durStr, metaStr)
+		var eventStr string
+		if event.Event != "" {
+			eventStr = fmt.Sprintf(" [%s]", event.Event)
+		}
+
+		plainMsg := fmt.Sprintf("[%s] [%s] [%s]%s %s%s%s\n",
+			event.Timestamp, event.Level, event.Category, eventStr, event.Message, durStr, metaStr)
 		redactedPlain := RedactSecrets(plainMsg)
 		_, _ = lm.plainFile.WriteString(redactedPlain)
 	}

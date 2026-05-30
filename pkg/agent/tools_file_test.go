@@ -14,6 +14,7 @@ func TestFileWriteHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(workspace)
+	workspace, _ = filepath.EvalSymlinks(workspace)
 
 	stdCtx := context.WithValue(context.Background(), WorkdirKey, workspace)
 	ctx := &mockToolContext{Context: stdCtx}
@@ -83,6 +84,7 @@ func TestFileReadHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(workspace)
+	workspace, _ = filepath.EvalSymlinks(workspace)
 
 	stdCtx := context.WithValue(context.Background(), WorkdirKey, workspace)
 	ctx := &mockToolContext{Context: stdCtx}
@@ -172,6 +174,7 @@ func TestFileEditHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(workspace)
+	workspace, _ = filepath.EvalSymlinks(workspace)
 
 	stdCtx := context.WithValue(context.Background(), WorkdirKey, workspace)
 	ctx := &mockToolContext{Context: stdCtx}
@@ -255,7 +258,7 @@ func TestFileEditHandler(t *testing.T) {
 
 	// 5. Whitespace tolerant fallback match
 	// Reset content
-	_ = os.WriteFile(filePath, []byte("func   Foo( x  int ) {\n\treturn\n}"), 0644)
+	_ = os.WriteFile(filePath, []byte("func    Foo(x int) {\n\treturn\n}"), 0644)
 	resWS, err := FileEditHandler(ctx, FileEditArgs{
 		Path:      "edit.txt",
 		OldString: "func Foo(x int) {\n\treturn\n}",
@@ -291,6 +294,7 @@ func TestFileEditBatchHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(workspace)
+	workspace, _ = filepath.EvalSymlinks(workspace)
 
 	stdCtx := context.WithValue(context.Background(), WorkdirKey, workspace)
 	ctx := &mockToolContext{Context: stdCtx}

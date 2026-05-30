@@ -223,3 +223,51 @@ func TestLoggerManager_ConcurrentAndJSONL(t *testing.T) {
 		t.Errorf("expected %d plain logs, got %d", expectedLogs, plainLogCount)
 	}
 }
+
+func TestLoggerManager_LogWrite(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "iroha_logwrite_test_*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	lm := &LoggerManager{
+		logsDir: tempDir,
+	}
+	lm.SetSessionID("logwrite_sess")
+
+	event := AuditEvent{
+		Level:      "AUDIT",
+		Category:   "security_gate",
+		Event:      "sandbox_allowed",
+		Message:    "Accessed path within sandbox bounds",
+		DurationMS: 4,
+		Metadata: map[string]any{
+			"path":    "/tmp/workspace/file.txt",
+			"api_key": "sk-someapi-key-here12345",
+		},
+	}
+
+	lm.LogWrite(event)
+	lm.SetSessionID("") // flush and close files
+
+	// Verify JSONL
+	jsonlPath := filepath.Join(tempDir, "session_logwrite_sess_audit.jsonl")
+	data, err := os.ReadFile(jsonlPath)
+	if err != nil {
+		t.Fatalf("failed to read jsonl log: %v", err)
+	}
+
+	var parsed AuditEvent
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal JSONL: %v", err)
+	}
+
+	if parsed.Level != "AUDIT" || parsed.Category != "security_gate" || parsed.Event != "sandbox_allowed" {
+		t.Errorf("unexpected event content: %+v", parsed)
+	}
+
+	if parsed.Metadata["api_key"] != "[REDACTED]" {
+		t.Errorf("expected redacted api_key, got: %v", parsed.Metadata["api_key"])
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -656,5 +657,65 @@ func TestSemanticMemoryConsolidation(t *testing.T) {
 	}
 	if !strings.Contains(mems[0].Content, "tab characters") {
 		t.Errorf("expected consolidated content to contain 'tab characters', got %q", mems[0].Content)
+	}
+}
+
+func TestMemoryManagerConcurrency(t *testing.T) {
+	dir := t.TempDir()
+	mm := newMemoryManagerInDir(t, dir)
+
+	// Save initial items
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("initial_pref_%d", i)
+		_ = mm.Save(name, "desc", MemTypeUser, "content")
+	}
+
+	const numGoroutines = 5
+	const iterations = 15
+	errChan := make(chan error, numGoroutines*2)
+
+	var wg sync.WaitGroup
+
+	// Writer goroutines - saving and updating
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				name := fmt.Sprintf("concur_pref_%d_%d", id, j)
+				saveErr := mm.Save(name, "concur desc", MemTypeUser, "concur content")
+				if saveErr != nil {
+					errChan <- saveErr
+					return
+				}
+				updateErr := mm.Update(name, "updated desc", MemTypeUser, "updated content")
+				if updateErr != nil {
+					errChan <- updateErr
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Reader goroutines - list, search, count, build prompt
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mm.List()
+				_ = mm.Count()
+				_ = mm.GetDirs()
+				_ = mm.Search("updated")
+				_ = mm.BuildSystemPromptSection("concur")
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		t.Errorf("concurrency error: %v", err)
 	}
 }
