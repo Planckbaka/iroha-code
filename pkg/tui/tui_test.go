@@ -271,7 +271,7 @@ func TestRawRendererFlickerFree(t *testing.T) {
 	renderer := NewRawRenderer(&buf)
 
 	lines1 := []string{"hello", "world"}
-	renderer.Draw(lines1)
+	renderer.Draw(lines1, -1, 0)
 	out1 := buf.String()
 
 	if !strings.Contains(out1, "hello") || !strings.Contains(out1, "world") {
@@ -280,7 +280,7 @@ func TestRawRendererFlickerFree(t *testing.T) {
 
 	buf.Reset()
 	lines2 := []string{"hello", "there"}
-	renderer.Draw(lines2)
+	renderer.Draw(lines2, -1, 0)
 	out2 := buf.String()
 
 	// Differential redraw should only update line 2
@@ -289,5 +289,47 @@ func TestRawRendererFlickerFree(t *testing.T) {
 	}
 	if !strings.Contains(out2, "there") {
 		t.Error("differential redraw should redraw differing lines like 'there'")
+	}
+}
+
+func TestToolStreamLinesAccumulation(t *testing.T) {
+	// Test legacy TUI Model accumulation
+	m := &Model{}
+	m.ActiveTool = agent.ToolStatus{
+		Name:    "shell_run",
+		Running: true,
+		StreamLines: []string{"line1"},
+	}
+
+	// Trigger dynamic accumulation
+	msg1 := ToolStatusMsg{
+		Status: agent.ToolStatus{
+			Name:    "shell_run",
+			Running: true,
+			StreamLines: []string{"line2"},
+		},
+	}
+	m.HandleEvent(msg1)
+
+	if len(m.ActiveTool.StreamLines) != 2 || m.ActiveTool.StreamLines[0] != "line1" || m.ActiveTool.StreamLines[1] != "line2" {
+		t.Errorf("expected StreamLines to accumulate, got: %v", m.ActiveTool.StreamLines)
+	}
+
+	// Test modern App TUI components accumulation
+	app := NewApp(nil, "", false, "")
+	app.chat.SetActiveTool(agent.ToolStatus{
+		Name:    "shell_run",
+		Running: true,
+		StreamLines: []string{"line1"},
+	})
+
+	app.handleToolStatus(agent.ToolStatus{
+		Name:    "shell_run",
+		Running: true,
+		StreamLines: []string{"line2"},
+	})
+
+	if len(app.chat.activeTool.StreamLines) != 2 || app.chat.activeTool.StreamLines[0] != "line1" || app.chat.activeTool.StreamLines[1] != "line2" {
+		t.Errorf("expected App activeTool StreamLines to accumulate, got: %v", app.chat.activeTool.StreamLines)
 	}
 }

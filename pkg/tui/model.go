@@ -226,17 +226,17 @@ func (m *Model) finalizeTurn() {
 		m.TotalSessionCost = config.EstimateCost(m.Runner.ModelName(), m.TotalTokens)
 	}
 
-	userLog := StyleUserMsg.Render("> " + m.CurrentPrompt)
-	var agentLog string
 	if m.LastError != nil {
-		agentLog = StyleAgentMsg.Render(RenderErrorCard(m.LastError))
+		agentLog := StyleAgentMsg.Render(RenderErrorCard(m.LastError))
+		m.History = append(m.History, agentLog)
 		m.LastError = nil
-	} else {
+	} else if m.StreamedText != "" {
 		m.LastRawResponse = m.StreamedText
-		agentLog = StyleAgentMsg.Render(RenderMarkdown(m.StreamedText))
+		agentLog := StyleAgentMsg.Render(RenderMarkdown(m.StreamedText))
+		m.History = append(m.History, agentLog)
+		m.StreamedText = ""
 	}
 
-	m.History = append(m.History, userLog, agentLog)
 	m.InputBuffer = nil
 	m.CursorIndex = 0
 }
@@ -261,6 +261,9 @@ func (m *Model) getEditableValue() string {
 
 // Render compiles all states into a slice of console lines
 func (m *Model) Render() []string {
+	m.CursorRow = -1
+	m.CursorCol = 0
+
 	if m.State == statePermissionSelect {
 		return m.renderPermissionSelectScreen()
 	}
@@ -304,6 +307,19 @@ func (m *Model) Render() []string {
 			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
 			
 			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
+
+			if len(m.ActiveTool.StreamLines) > 0 {
+				cmdDisplay := ""
+				if argMap, ok := m.ActiveTool.Args.(map[string]any); ok {
+					if cmd, ok := argMap["command"].(string); ok {
+						cmdDisplay = cmd
+					}
+				}
+				streamArea := RenderShellStreamArea(m.ActiveTool.StreamLines, cmdDisplay, m.Width)
+				if streamArea != "" {
+					lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+				}
+			}
 		} else {
 			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 			spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
@@ -334,6 +350,19 @@ func (m *Model) Render() []string {
 			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
 			
 			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
+
+			if len(m.ActiveTool.StreamLines) > 0 {
+				cmdDisplay := ""
+				if argMap, ok := m.ActiveTool.Args.(map[string]any); ok {
+					if cmd, ok := argMap["command"].(string); ok {
+						cmdDisplay = cmd
+					}
+				}
+				streamArea := RenderShellStreamArea(m.ActiveTool.StreamLines, cmdDisplay, m.Width)
+				if streamArea != "" {
+					lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+				}
+			}
 		}
 	case stateConfirming:
 		if m.ConfirmEditActive {
@@ -364,18 +393,37 @@ func (m *Model) Render() []string {
 		lines = append(lines, strings.Split(strings.TrimRight(menu, "\n"), "\n")...)
 	}
 
-	// 6. Input Area with Cyber-Holographic Block Cursor
+	// 6. Input Area (without duplicate software cursor)
 	promptPrefix := "┃ "
 	if m.ConfirmEditActive {
 		promptPrefix = "✏️ "
 	}
 	inputVal := string(m.InputBuffer)
-	var inputWithCursor string
-	if m.CursorIndex >= len(m.InputBuffer) {
-		inputWithCursor = promptPrefix + inputVal + "█"
-	} else {
-		inputWithCursor = promptPrefix + string(m.InputBuffer[:m.CursorIndex]) + "█" + string(m.InputBuffer[m.CursorIndex:])
+
+	// Calculate precise hardware cursor position
+	cursorIdx := m.CursorIndex
+	if cursorIdx > len(m.InputBuffer) {
+		cursorIdx = len(m.InputBuffer)
 	}
+	if cursorIdx < 0 {
+		cursorIdx = 0
+	}
+	beforeCursor := m.InputBuffer[:cursorIdx]
+	linesBefore := strings.Split(string(beforeCursor), "\n")
+	cursorLineIdx := len(linesBefore) - 1
+
+	prefixWidth := lipgloss.Width(promptPrefix)
+	linePrefixWidth := 0
+	if cursorLineIdx == 0 {
+		linePrefixWidth = prefixWidth
+	}
+
+	m.CursorCol = linePrefixWidth + lipgloss.Width(linesBefore[cursorLineIdx]) + 1
+	
+	inputStartRow := len(lines)
+	m.CursorRow = inputStartRow + cursorLineIdx
+
+	inputWithCursor := promptPrefix + inputVal
 	lines = append(lines, strings.Split(inputWithCursor, "\n")...)
 
 	// 7. Status bar at the bottom

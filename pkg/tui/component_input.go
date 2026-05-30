@@ -126,19 +126,11 @@ func (ic *InputComponent) OnStateChange(oldState, newState TuiState) {
 	}
 }
 
-// Render produces the input area output with block cursor.
+// Render produces the input area output.
 func (ic *InputComponent) Render(width int) []string {
 	promptPrefix := "┃ "
 	inputVal := string(ic.focus.Buffer)
-
-	var inputWithCursor string
-	if ic.focus.CursorIndex >= len(ic.focus.Buffer) {
-		inputWithCursor = promptPrefix + inputVal + "█"
-	} else {
-		inputWithCursor = promptPrefix + string(ic.focus.Buffer[:ic.focus.CursorIndex]) + "█" + string(ic.focus.Buffer[ic.focus.CursorIndex:])
-	}
-
-	return strings.Split(inputWithCursor, "\n")
+	return strings.Split(promptPrefix+inputVal, "\n")
 }
 
 // SetSlashMenu sets the slash menu component reference.

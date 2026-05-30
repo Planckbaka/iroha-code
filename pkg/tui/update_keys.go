@@ -30,6 +30,9 @@ func (m *Model) HandleEvent(event any) bool {
 		}
 		m.HistoryManager.Add(msg.Prompt)
 		m.CurrentPrompt = msg.Prompt
+		userLog := StyleUserMsg.Render("> " + m.CurrentPrompt)
+		m.History = append(m.History, userLog)
+
 		m.StreamedText = ""
 		m.RenderedText = ""
 		m.State = stateThinking
@@ -56,6 +59,9 @@ func (m *Model) HandleEvent(event any) bool {
 	case ToolStatusMsg:
 		status := msg.Status
 		if status.Running {
+			if m.ActiveTool.Running && m.ActiveTool.Name == status.Name {
+				status.StreamLines = append(m.ActiveTool.StreamLines, status.StreamLines...)
+			}
 			m.ActiveTool = status
 			if m.RoundStartTime.IsZero() {
 				m.RoundStartTime = time.Now()
@@ -64,11 +70,18 @@ func (m *Model) HandleEvent(event any) bool {
 			m.ActiveTool = agent.ToolStatus{}
 			var logLine string
 			if status.Success {
-				logLine = "\n" + RenderToolSuccessCard(status.Name, status.Args, status.Duration) + "\n"
+				logLine = "\n" + RenderToolSuccessCard(status.Name, status.Args, status.Duration)
 			} else {
-				logLine = "\n\n" + RenderToolErrorCard(status.Name, status.Args, status.Duration, status.Error) + "\n"
+				logLine = "\n\n" + RenderToolErrorCard(status.Name, status.Args, status.Duration, status.Error)
 			}
-			m.StreamedText += logLine
+
+			// Push accumulated LLM text first to avoid wrapping tool log in Glamour
+			if m.StreamedText != "" {
+				agentLog := StyleAgentMsg.Render(RenderMarkdown(m.StreamedText))
+				m.History = append(m.History, agentLog)
+				m.StreamedText = ""
+			}
+			m.History = append(m.History, logLine)
 		}
 		return false
 
@@ -363,6 +376,9 @@ func (m *Model) handleKey(k Key) bool {
 			}
 
 			m.CurrentPrompt = inputVal
+			userLog := StyleUserMsg.Render("> " + m.CurrentPrompt)
+			m.History = append(m.History, userLog)
+
 			m.StreamedText = ""
 			m.State = stateThinking
 			m.InputBuffer = nil

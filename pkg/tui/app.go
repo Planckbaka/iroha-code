@@ -65,6 +65,10 @@ type App struct {
 	// Startup
 	startInSessionPicker bool
 	startupPrompt        string
+
+	// Cursor coordinates
+	cursorRow int
+	cursorCol int
 }
 
 // NewApp creates and wires all components.
@@ -207,6 +211,9 @@ func (a *App) activeComponents() []Component {
 
 // Render collects output from all components.
 func (a *App) Render() []string {
+	a.cursorRow = -1
+	a.cursorCol = 0
+
 	// Full-screen overlays
 	if a.screens.Active(a.state) {
 		return a.screens.Render(a.width)
@@ -232,11 +239,33 @@ func (a *App) Render() []string {
 	// 3. Active stream / thinking / confirming
 	switch a.state {
 	case stateThinking:
+		spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
+		spinnerStyled := lipgloss.NewStyle().Foreground(ColorSecondary).Render(spinnerFrame)
+
 		if a.chat.activeTool.Running {
+			color, icon, _ := getToolCategoryTheme(a.chat.activeTool.Name)
 			activity := FormatToolActivity(a.chat.activeTool.Name, a.chat.activeTool.Args)
-			lines = append(lines, "", StyleAgentMsg.Render("🤖 "+activity))
+			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
+			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
+
+			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
+
+			if len(a.chat.activeTool.StreamLines) > 0 {
+				cmdDisplay := ""
+				if argMap, ok := a.chat.activeTool.Args.(map[string]any); ok {
+					if cmd, ok := argMap["command"].(string); ok {
+						cmdDisplay = cmd
+					}
+				}
+				streamArea := RenderShellStreamArea(a.chat.activeTool.StreamLines, cmdDisplay, a.width)
+				if streamArea != "" {
+					lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+				}
+			}
 		} else {
-			lines = append(lines, "", StyleAgentMsg.Render("🤖 thinking..."))
+			textStyled := lipgloss.NewStyle().Foreground(ColorPrimary).Italic(true).Render("thinking...")
+			lines = append(lines, "", "  "+spinnerStyled+" "+textStyled)
 		}
 	case stateStreaming:
 		fullText := a.renderedText
@@ -249,8 +278,29 @@ func (a *App) Render() []string {
 			lines = append(lines, strings.Split(rendered, "\n")...)
 		}
 		if a.chat.activeTool.Running {
+			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+			spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
+			spinnerStyled := lipgloss.NewStyle().Foreground(ColorSecondary).Render(spinnerFrame)
+
+			color, icon, _ := getToolCategoryTheme(a.chat.activeTool.Name)
 			activity := FormatToolActivity(a.chat.activeTool.Name, a.chat.activeTool.Args)
-			lines = append(lines, "", StyleAgentMsg.Render("🤖 "+activity))
+			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
+			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
+
+			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
+
+			if len(a.chat.activeTool.StreamLines) > 0 {
+				cmdDisplay := ""
+				if argMap, ok := a.chat.activeTool.Args.(map[string]any); ok {
+					if cmd, ok := argMap["command"].(string); ok {
+						cmdDisplay = cmd
+					}
+				}
+				streamArea := RenderShellStreamArea(a.chat.activeTool.StreamLines, cmdDisplay, a.width)
+				if streamArea != "" {
+					lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+				}
+			}
 		}
 	case stateConfirming:
 		lines = append(lines, a.confirm.Render(a.width)...)
@@ -265,7 +315,31 @@ func (a *App) Render() []string {
 	}
 
 	// 6. Input area
+	inputStartRow := len(lines)
 	lines = append(lines, a.input.Render(a.width)...)
+
+	if a.state == statePrompt {
+		promptPrefix := "┃ "
+		cursorIdx := a.input.focus.CursorIndex
+		if cursorIdx > len(a.input.focus.Buffer) {
+			cursorIdx = len(a.input.focus.Buffer)
+		}
+		if cursorIdx < 0 {
+			cursorIdx = 0
+		}
+		beforeCursor := a.input.focus.Buffer[:cursorIdx]
+		linesBefore := strings.Split(string(beforeCursor), "\n")
+		cursorLineIdx := len(linesBefore) - 1
+
+		prefixWidth := lipgloss.Width(promptPrefix)
+		linePrefixWidth := 0
+		if cursorLineIdx == 0 {
+			linePrefixWidth = prefixWidth
+		}
+
+		a.cursorCol = linePrefixWidth + lipgloss.Width(linesBefore[cursorLineIdx]) + 1
+		a.cursorRow = inputStartRow + cursorLineIdx
+	}
 
 	// 7. Status bar
 	lines = append(lines, a.status.Render(a.width)...)
@@ -359,6 +433,10 @@ func (a *App) executePrompt(prompt string) {
 // handleToolStatus processes tool status updates.
 func (a *App) handleToolStatus(status agent.ToolStatus) {
 	if status.Running {
+		// Preserve and accumulate streamed stdout history
+		if a.chat.activeTool.Running && a.chat.activeTool.Name == status.Name {
+			status.StreamLines = append(a.chat.activeTool.StreamLines, status.StreamLines...)
+		}
 		a.chat.SetActiveTool(status)
 		a.status.SetActiveTool(status)
 		if a.roundStartTime.IsZero() {
@@ -369,11 +447,16 @@ func (a *App) handleToolStatus(status agent.ToolStatus) {
 		a.status.SetActiveTool(agent.ToolStatus{})
 		var logLine string
 		if status.Success {
-			logLine = "\n" + RenderToolSuccessCard(status.Name, status.Args, status.Duration) + "\n"
+			logLine = "\n" + RenderToolSuccessCard(status.Name, status.Args, status.Duration)
 		} else {
-			logLine = "\n\n" + RenderToolErrorCard(status.Name, status.Args, status.Duration, status.Error) + "\n"
+			logLine = "\n\n" + RenderToolErrorCard(status.Name, status.Args, status.Duration, status.Error)
 		}
-		a.streamedText += logLine
+
+		if a.streamedText != "" {
+			a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderMarkdown(a.streamedText)})
+			a.streamedText = ""
+		}
+		a.history.Add(HistoryEntry{Role: RoleTool, Content: logLine})
 	}
 }
 
@@ -400,15 +483,14 @@ func (a *App) finalizeTurn() {
 	a.status.SetTokenUsage(a.totalTokens, a.totalSessionCost)
 
 	// Add agent response to history
-	var agentContent string
 	if a.lastError != nil {
-		agentContent = RenderErrorCard(a.lastError)
+		a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderErrorCard(a.lastError)})
 		a.lastError = nil
-	} else {
+	} else if a.streamedText != "" {
 		a.lastRawResp = a.streamedText
-		agentContent = RenderMarkdown(a.streamedText)
+		a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderMarkdown(a.streamedText)})
+		a.streamedText = ""
 	}
-	a.history.Add(HistoryEntry{Role: RoleAgent, Content: agentContent})
 
 	a.input.Clear()
 	a.notifyStateChange()
@@ -646,7 +728,7 @@ func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 	}()
 
 	app.UpdateWidth()
-	renderer.Draw(app.Render())
+	renderer.Draw(app.Render(), app.cursorRow, app.cursorCol)
 
 	if app.startupPrompt != "" {
 		eventChan <- StartupPromptMsg{Prompt: app.startupPrompt}
@@ -663,7 +745,7 @@ func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 				return nil
 			}
 			app.UpdateWidth()
-			renderer.Draw(app.Render())
+			renderer.Draw(app.Render(), app.cursorRow, app.cursorCol)
 		}
 	}
 }

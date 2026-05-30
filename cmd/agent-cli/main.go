@@ -206,8 +206,8 @@ func main() {
 		initialMode = agent.ModeDefault
 	}
 
-	// 5. Run the standard raw interactive TUI loop (Pi-style)
-	if err := tui.RunRawTUI(runner, sessionID, startInSessionPicker, initialMode, startupPrompt); err != nil {
+	// 5. Run the modern decoupled component-based raw TUI loop
+	if err := tui.RunApp(runner, sessionID, startInSessionPicker, initialMode, startupPrompt); err != nil {
 		fmt.Printf("\x1b[31m[TUI runtime error] %v\x1b[0m\n", err)
 		os.Exit(1)
 	}

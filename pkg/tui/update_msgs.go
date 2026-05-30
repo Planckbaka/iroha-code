@@ -97,7 +97,7 @@ func RunRawTUI(runner *agent.CustomRunner, sessionID string, startInSessionPicke
 
 	updateWidth()
 	// Draw the initial welcome screen
-	renderer.Draw(m.Render())
+	renderer.Draw(m.Render(), m.CursorRow, m.CursorCol)
 
 	// Handle CLI trailing prompts immediately
 	if m.StartupPrompt != "" {
@@ -116,7 +116,7 @@ func RunRawTUI(runner *agent.CustomRunner, sessionID string, startInSessionPicke
 				return nil
 			}
 			updateWidth()
-			renderer.Draw(m.Render())
+			renderer.Draw(m.Render(), m.CursorRow, m.CursorCol)
 		}
 	}
 }
