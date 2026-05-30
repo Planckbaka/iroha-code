@@ -56,8 +56,12 @@ func (r *RawRenderer) Draw(newLines []string, cursorRow, cursorCol int) {
 
 	if len(r.oldLines) == 0 {
 		// First draw: simply print all new lines sequentially
-		for _, line := range newLines {
-			fmt.Fprintf(r.out, "\r\x1b[K%s\n", line)
+		for i, line := range newLines {
+			if i < len(newLines)-1 {
+				fmt.Fprintf(r.out, "\r\x1b[K%s\n", line)
+			} else {
+				fmt.Fprintf(r.out, "\r\x1b[K%s", line)
+			}
 		}
 		r.oldLines = make([]string, len(newLines))
 		copy(r.oldLines, newLines)
@@ -83,10 +87,15 @@ func (r *RawRenderer) Draw(newLines []string, cursorRow, cursorCol int) {
 
 		// Only rewrite screen lines if differences are detected
 		if firstDiff != len(r.oldLines) || len(newLines) != len(r.oldLines) {
-			// 1. Move cursor up to the first differing line
-			upLines := len(r.oldLines) - firstDiff
-			if upLines > 0 {
-				fmt.Fprintf(r.out, "\x1b[%dA", upLines)
+			if firstDiff < len(r.oldLines) {
+				// 1. Move cursor up to the first differing line
+				upLines := (len(r.oldLines) - 1) - firstDiff
+				if upLines > 0 {
+					fmt.Fprintf(r.out, "\x1b[%dA", upLines)
+				}
+			} else {
+				// Appending new lines: move to the next line first
+				fmt.Fprint(r.out, "\n")
 			}
 
 			// 2. Overwrite from the first diff line onwards
@@ -96,14 +105,18 @@ func (r *RawRenderer) Draw(newLines []string, cursorRow, cursorCol int) {
 				// Clean trailing carriage returns/newlines to prevent layout breakage
 				line = strings.ReplaceAll(line, "\r", "")
 				line = strings.ReplaceAll(line, "\n", "")
-				fmt.Fprintf(r.out, "\r\x1b[K%s\n", line)
+				if i < len(newLines)-1 {
+					fmt.Fprintf(r.out, "\r\x1b[K%s\n", line)
+				} else {
+					fmt.Fprintf(r.out, "\r\x1b[K%s", line)
+				}
 			}
 
 			// 3. Clear any leftover trailing lines if the new output is shorter than the old output
 			if len(r.oldLines) > len(newLines) {
 				extra := len(r.oldLines) - len(newLines)
 				for i := 0; i < extra; i++ {
-					fmt.Fprint(r.out, "\r\x1b[K\n")
+					fmt.Fprint(r.out, "\n\r\x1b[K")
 				}
 				// Move cursor back up to the end of the new output
 				fmt.Fprintf(r.out, "\x1b[%dA", extra)
@@ -118,7 +131,7 @@ func (r *RawRenderer) Draw(newLines []string, cursorRow, cursorCol int) {
 	// Position terminal hardware cursor exactly on the calculated coordinates
 	// to ensure IME input method candidate windows align perfectly.
 	if cursorRow != -1 {
-		up := len(newLines) - cursorRow
+		up := (len(newLines) - 1) - cursorRow
 		if up > 0 {
 			fmt.Fprintf(r.out, "\x1b[%dA", up)
 		}
