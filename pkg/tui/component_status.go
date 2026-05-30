@@ -81,7 +81,7 @@ func (sb *StatusBarComponent) Render(width int) []string {
 	if width <= 0 {
 		width = 80
 	}
-	modeStr := strings.ToLower(sb.mode)
+	modeStr := strings.ToLower(string(agent.GlobalPermissionManager.GetMode()))
 	if modeStr == "" {
 		modeStr = "-"
 	}

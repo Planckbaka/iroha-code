@@ -135,10 +135,11 @@ func (a *App) HandleEvent(event any) bool {
 		a.handleToolStatus(msg.Status)
 		return false
 	case ConfirmationRequiredMsg:
+		old := a.state
 		a.state = stateConfirming
 		a.confirm.SetPrompt(msg.Prompt)
 		a.confirm.activeToolArgs = a.chat.activeTool.Args
-		a.notifyStateChange()
+		a.notifyStateChange(old)
 		return false
 	case AgentErrorMsg:
 		a.lastError = msg.Err
@@ -348,10 +349,12 @@ func (a *App) Render() []string {
 }
 
 // notifyStateChange propagates state transitions to all components.
-func (a *App) notifyStateChange() {
-	old := a.state
+// Callers must pass the state BEFORE the transition so components can
+// detect the actual change (e.g. InputComponent only grabs focus when
+// transitioning INTO statePrompt).
+func (a *App) notifyStateChange(oldState TuiState) {
 	for _, comp := range []Component{a.chat, a.input, a.confirm, a.status, a.slash, a.screens} {
-		comp.OnStateChange(old, a.state)
+		comp.OnStateChange(oldState, a.state)
 	}
 }
 
@@ -372,34 +375,38 @@ func (a *App) handleConfirmResponse(response string) {
 	} else {
 		agent.Bridge.ResponseChan <- response
 	}
+	old := a.state
 	a.state = stateStreaming
-	a.notifyStateChange()
+	a.notifyStateChange(old)
 }
 
 func (a *App) handlePermSelect(mode string) {
 	_ = agent.GlobalPermissionManager.SetMode(modeToPermMode(mode))
+	old := a.state
 	if a.startInSessionPicker {
 		a.state = stateSessionSelect
 		a.loadSessionsList()
 	} else {
 		a.state = statePrompt
 	}
-	a.notifyStateChange()
+	a.notifyStateChange(old)
 }
 
 func (a *App) handleSessionSelect(sessionID string) {
 	a.sessionID = sessionID
 	a.loadHistoryFromSession(sessionID)
+	old := a.state
 	a.state = statePrompt
-	a.notifyStateChange()
+	a.notifyStateChange(old)
 }
 
 func (a *App) handleNewSession() {
 	a.sessionID = uuid.New().String()
 	a.history = NewHistoryStore()
 	a.totalTokens = 0
+	old := a.state
 	a.state = statePrompt
-	a.notifyStateChange()
+	a.notifyStateChange(old)
 }
 
 // executePrompt starts an agent round.
@@ -423,7 +430,7 @@ func (a *App) executePrompt(prompt string) {
 		a.input.history.Add(prompt)
 	}
 
-	a.notifyStateChange()
+	a.notifyStateChange(statePrompt)
 
 	a.runner.Execute(a.ctx, "user-dev", a.sessionID, a.currentPrompt,
 		a.OnEvent, a.OnError, a.OnDone,
@@ -462,7 +469,6 @@ func (a *App) handleToolStatus(status agent.ToolStatus) {
 
 // finalizeTurn completes an agent round.
 func (a *App) finalizeTurn() {
-	a.state = statePrompt
 	if !a.roundStartTime.IsZero() {
 		a.roundStartTime = time.Time{}
 	}
@@ -493,7 +499,9 @@ func (a *App) finalizeTurn() {
 	}
 
 	a.input.Clear()
-	a.notifyStateChange()
+	old := a.state
+	a.state = statePrompt
+	a.notifyStateChange(old)
 }
 
 // loadSessionsList loads sessions for the picker screen.
@@ -652,12 +660,13 @@ func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 	// Apply initial mode
 	if initialMode != "" {
 		_ = agent.GlobalPermissionManager.SetMode(initialMode)
+		old := app.state
 		if startInSessionPicker {
 			app.state = stateSessionSelect
 		} else {
 			app.state = statePrompt
 		}
-		app.notifyStateChange()
+		app.notifyStateChange(old)
 	}
 
 	// Load session history
@@ -768,9 +777,10 @@ func (a *App) handleRawSlashCommand(inputVal string) bool {
 	switch cmdName {
 	case "/permission":
 		if len(parts) < 2 {
+			old := a.state
 			a.state = statePermissionSelect
 			a.screens.SetPermIndex(1)
-			a.notifyStateChange()
+			a.notifyStateChange(old)
 			return false
 		}
 		modeArg := agent.PermissionMode(strings.ToLower(parts[1]))
@@ -826,9 +836,10 @@ func (a *App) handleRawSlashCommand(inputVal string) bool {
 		replyLog = cardStyle.Render(sb.String()) + "\n"
 
 	case "/sessions":
+		old := a.state
 		a.state = stateSessionSelect
 		a.loadSessionsList()
-		a.notifyStateChange()
+		a.notifyStateChange(old)
 		return false
 
 	case "/help", "/commands":
