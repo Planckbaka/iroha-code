@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-23 | Updated: 2026-05-25 -->
+<!-- Generated: 2026-05-23 | Updated: 2026-06-03 -->
 
 # llm
 
@@ -15,6 +15,7 @@ LLM provider abstraction layer. Implements the `model.LLM` interface from Google
 | `genkit_adapter.go` | `GenkitModelAdapter` — bridges Firebase Genkit Go SDK into ADK `model.LLM` for Gemini and official Claude SDK |
 | `helpers.go` | `CollectStream` — non-streaming helper that drains an iterator into a slice |
 | `debuglog.go` | `/tmp` debug log for adapter tracing (enabled via env var) |
+| `retry.go` | Session-level retry budget tracking (`ConsumeRetry`, `ResetRetryBudget`, `RetryBudgetStatus`), mutex-guarded counter with configurable max |
 
 ## For AI Agents
 
@@ -29,7 +30,7 @@ LLM provider abstraction layer. Implements the `model.LLM` interface from Google
 
 ### Testing Requirements
 - `go test ./pkg/llm/...`
-- Tests exist for: anthropic adapter (271 lines, httptest SSE mock), openai adapter (SSE streaming, tool call accumulation, retry logic)
+- Tests exist for: anthropic adapter (271 lines, httptest SSE mock), openai adapter (SSE streaming, tool call accumulation, retry logic), retry budget (session-level consume/reset/status)
 - **Gap**: No tests for Genkit adapter
 
 ### Common Patterns

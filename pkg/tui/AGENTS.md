@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-05-23 | Updated: 2026-05-29 -->
+<!-- Generated: 2026-05-23 | Updated: 2026-06-03 -->
 
 # tui
 
@@ -37,6 +37,9 @@ Component-based retained-mode TUI (Pi-tui inspired):
 | `styles.go` | Lipgloss color palette (cyber-holographic) and style definitions |
 | `raw_input.go` | Raw terminal keyboard reader with UTF-8 support |
 | `renderer.go` | `RawRenderer` — differential ANSI redraw |
+| `component_test.go` | Component interface compliance and behavior tests |
+| `focus_test.go` | FocusModel unit tests |
+| `history_test.go` | HistoryStore unit tests (add, scroll, search, viewport) |
 
 ## For AI Agents
 
@@ -51,7 +54,7 @@ Component-based retained-mode TUI (Pi-tui inspired):
 
 ### Testing Requirements
 - `go test ./pkg/tui/...`
-- Tests for FocusModel, HistoryStore (26 tests)
+- Tests for FocusModel, HistoryStore, Component interface compliance
 - New component code targets >=80% coverage
 
 ### Common Patterns
