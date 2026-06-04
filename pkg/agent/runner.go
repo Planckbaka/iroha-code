@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"iter"
 	"os"
+	"strings"
 	"sync"
 
 	"iroha/pkg/llm"
@@ -123,7 +124,64 @@ func (d *DynamicLLMDelegator) GenerateContent(ctx context.Context, req *model.LL
 		}
 	}
 
-	return m.GenerateContent(ctx, req, stream)
+	// s11 Error Recovery: a "prompt too long" / context-length-exceeded error
+	// surfaces from the provider BEFORE any content streams, so it is safe to
+	// react by force-compacting the window and retrying once. Mid-stream errors
+	// are NOT retried here — replaying would duplicate already-emitted text.
+	return d.generateWithContextRecovery(ctx, req, stream, m)
+}
+
+// generateWithContextRecovery wraps the underlying model's response stream and,
+// if the very first item is a context-length error (no content emitted yet),
+// force-compacts the request once and retries. Any later error is passed
+// through untouched to avoid duplicating streamed output.
+func (d *DynamicLLMDelegator) generateWithContextRecovery(ctx context.Context, req *model.LLMRequest, stream bool, m model.LLM) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		emitted := false
+		for resp, err := range m.GenerateContent(ctx, req, stream) {
+			if err != nil && !emitted && req != nil && isContextLengthError(err) {
+				// Force-compact regardless of size gate, then retry once.
+				sessionID := GlobalLogger.CurrentSessionID()
+				req.Contents = CompactContents(req.Contents, sessionID, m)
+				for resp2, err2 := range m.GenerateContent(ctx, req, stream) {
+					if !yield(resp2, err2) {
+						return
+					}
+				}
+				return
+			}
+			if resp != nil && resp.Content != nil {
+				for _, p := range resp.Content.Parts {
+					if p != nil && p.Text != "" {
+						emitted = true
+						break
+					}
+				}
+			}
+			if !yield(resp, err) {
+				return
+			}
+		}
+	}
+}
+
+// isContextLengthError reports whether an error from a provider indicates the
+// request exceeded the model's context window (vs. a transient/auth error).
+func isContextLengthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "prompt is too long"),
+		strings.Contains(msg, "context length"),
+		strings.Contains(msg, "context_length_exceeded"),
+		strings.Contains(msg, "maximum context"),
+		strings.Contains(msg, "too many tokens"),
+		strings.Contains(msg, "reduce the length"):
+		return true
+	}
+	return false
 }
 
 // latestUserText returns the text of the most recent user message, used for
