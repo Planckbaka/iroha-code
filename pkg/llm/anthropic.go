@@ -10,6 +10,7 @@ import (
 	"iter"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/adk/model"
@@ -29,9 +30,24 @@ type AnthropicAdapter struct {
 	modelName        string
 	apiKey           string
 	baseURL          string
+	promptMu         sync.RWMutex
 	systemPrompt     string
 	hooks            AdapterHooks
 	cumulativeTokens int
+}
+
+// SetSystemPrompt atomically replaces the active system prompt (s10 dynamic refresh).
+func (a *AnthropicAdapter) SetSystemPrompt(prompt string) {
+	a.promptMu.Lock()
+	a.systemPrompt = prompt
+	a.promptMu.Unlock()
+}
+
+// getSystemPrompt returns the active system prompt under read lock.
+func (a *AnthropicAdapter) getSystemPrompt() string {
+	a.promptMu.RLock()
+	defer a.promptMu.RUnlock()
+	return a.systemPrompt
 }
 
 func NewAnthropicAdapter(modelName, apiKey, baseURL, systemPrompt string, hooks AdapterHooks) *AnthropicAdapter {
@@ -144,8 +160,8 @@ func (a *AnthropicAdapter) GenerateContent(ctx context.Context, req *model.LLMRe
 
 		// Build system prompt
 		var systemPrompt string
-		if a.systemPrompt != "" {
-			systemPrompt = a.systemPrompt
+		if sp := a.getSystemPrompt(); sp != "" {
+			systemPrompt = sp
 		} else if req.Config != nil && req.Config.SystemInstruction != nil {
 			var parts []string
 			for _, p := range req.Config.SystemInstruction.Parts {

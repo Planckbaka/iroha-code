@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/adk/model"
@@ -23,9 +24,24 @@ type OpenAICompatibleAdapter struct {
 	modelName        string
 	apiKey           string
 	baseURL          string
+	promptMu         sync.RWMutex
 	systemPrompt     string
 	hooks            AdapterHooks
 	cumulativeTokens int
+}
+
+// SetSystemPrompt atomically replaces the active system prompt (s10 dynamic refresh).
+func (g *OpenAICompatibleAdapter) SetSystemPrompt(prompt string) {
+	g.promptMu.Lock()
+	g.systemPrompt = prompt
+	g.promptMu.Unlock()
+}
+
+// getSystemPrompt returns the active system prompt under read lock.
+func (g *OpenAICompatibleAdapter) getSystemPrompt() string {
+	g.promptMu.RLock()
+	defer g.promptMu.RUnlock()
+	return g.systemPrompt
 }
 
 func NewOpenAICompatibleAdapter(modelName string, apiKey string, baseURL string, systemPrompt string, hooks AdapterHooks) *OpenAICompatibleAdapter {
@@ -143,8 +159,8 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 		}
 
 		var systemPrompt string
-		if g.systemPrompt != "" {
-			systemPrompt = g.systemPrompt
+		if sp := g.getSystemPrompt(); sp != "" {
+			systemPrompt = sp
 		} else if req.Config != nil && req.Config.SystemInstruction != nil {
 			var parts []string
 			for _, p := range req.Config.SystemInstruction.Parts {

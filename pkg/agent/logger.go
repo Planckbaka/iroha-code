@@ -92,6 +92,13 @@ var GlobalLogger = &LoggerManager{
 	logsDir: filepath.Join(".", ".iroha", "logs"),
 }
 
+// CurrentSessionID returns the active session ID for the logger, or "" if unset.
+func (lm *LoggerManager) CurrentSessionID() string {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	return lm.sessionID
+}
+
 // SetSessionID configures the active session ID and initializes the log files.
 func (lm *LoggerManager) SetSessionID(sessionID string) {
 	lm.mu.Lock()

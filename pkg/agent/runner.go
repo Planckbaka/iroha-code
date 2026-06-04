@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"iter"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
 )
 
 // runnerHooks implements llm.AdapterHooks using an injected TodoManager.
@@ -59,11 +61,86 @@ func (d *DynamicLLMDelegator) Name() string {
 	return d.currentModel.Name()
 }
 
+// compactionTriggerTokens is the estimated-token threshold above which the
+// delegator runs CompactContents before delegating to the underlying model.
+// Mirrors the s06 "auto-compact" lever (~50k tokens of active context).
+const compactionTriggerTokens = 50000
+
+// estimateContentsTokens returns a rough token estimate for a slice of Contents
+// by summing text/JSON-arg byte length and dividing by 4.
+func estimateContentsTokens(contents []*genai.Content) int {
+	total := 0
+	for _, c := range contents {
+		if c == nil {
+			continue
+		}
+		for _, p := range c.Parts {
+			if p == nil {
+				continue
+			}
+			total += len(p.Text)
+			if p.FunctionCall != nil {
+				if b, err := json.Marshal(p.FunctionCall.Args); err == nil {
+					total += len(b)
+				}
+			}
+			if p.FunctionResponse != nil {
+				if b, err := json.Marshal(p.FunctionResponse.Response); err == nil {
+					total += len(b)
+				}
+			}
+		}
+	}
+	return estimateTokens(total)
+}
+
 func (d *DynamicLLMDelegator) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	d.mu.RLock()
 	m := d.currentModel
 	d.mu.RUnlock()
+
+	// s10 System Prompt: the dynamic pipeline only takes effect if the prompt is
+	// rebuilt each turn and re-pushed to the adapter. We update the live message
+	// count first (drives <identity> re-injection) then assemble a fresh prompt
+	// so time/tasks/teammates/inbox/safety/memory all reflect current state.
+	if req != nil {
+		GlobalMessageCount = len(req.Contents)
+		if updater, ok := m.(llm.SystemPromptUpdater); ok {
+			builder := NewSystemPromptBuilder()
+			userPrompt := latestUserText(req.Contents)
+			updater.SetSystemPrompt(builder.BuildWithPrompt(userPrompt))
+		}
+	}
+
+	// s06 Context Compact: relocate detail out of the active window before it
+	// overflows. Gated on a token estimate so small turns skip the deep copy.
+	// The underlying model `m` (not the delegator) is passed for summarization
+	// to avoid re-entering compaction recursively.
+	if req != nil && len(req.Contents) > 0 {
+		if len(req.Contents) > 12 || estimateContentsTokens(req.Contents) > compactionTriggerTokens {
+			sessionID := GlobalLogger.CurrentSessionID()
+			req.Contents = CompactContents(req.Contents, sessionID, m)
+		}
+	}
+
 	return m.GenerateContent(ctx, req, stream)
+}
+
+// latestUserText returns the text of the most recent user message, used for
+// skill trigger-matching when rebuilding the system prompt.
+func latestUserText(contents []*genai.Content) string {
+	for i := len(contents) - 1; i >= 0; i-- {
+		c := contents[i]
+		if c == nil || c.Role != "user" {
+			continue
+		}
+		for _, p := range c.Parts {
+			if p != nil && p.Text != "" {
+				return p.Text
+			}
+		}
+	}
+	return ""
 }
 
 func (d *DynamicLLMDelegator) SetModel(m model.LLM) {

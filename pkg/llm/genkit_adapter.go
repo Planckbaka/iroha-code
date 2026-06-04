@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"iter"
 	"strings"
+	"sync"
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
@@ -16,9 +17,24 @@ import (
 type GenkitModelAdapter struct {
 	g                *genkit.Genkit
 	modelName        string
+	promptMu         sync.RWMutex
 	systemPrompt     string
 	hooks            AdapterHooks
 	cumulativeTokens int
+}
+
+// SetSystemPrompt atomically replaces the active system prompt (s10 dynamic refresh).
+func (m *GenkitModelAdapter) SetSystemPrompt(prompt string) {
+	m.promptMu.Lock()
+	m.systemPrompt = prompt
+	m.promptMu.Unlock()
+}
+
+// getSystemPrompt returns the active system prompt under read lock.
+func (m *GenkitModelAdapter) getSystemPrompt() string {
+	m.promptMu.RLock()
+	defer m.promptMu.RUnlock()
+	return m.systemPrompt
 }
 
 // NewGenkitModelAdapter creates a new GenkitModelAdapter instance.
@@ -74,8 +90,8 @@ func (m *GenkitModelAdapter) GenerateContent(ctx context.Context, req *model.LLM
 
 		// Build dynamic system prompt
 		var systemPrompt string
-		if m.systemPrompt != "" {
-			systemPrompt = m.systemPrompt
+		if sp := m.getSystemPrompt(); sp != "" {
+			systemPrompt = sp
 		} else if req.Config != nil && req.Config.SystemInstruction != nil {
 			var parts []string
 			for _, p := range req.Config.SystemInstruction.Parts {
