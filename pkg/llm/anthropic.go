@@ -462,6 +462,21 @@ func (a *AnthropicAdapter) GenerateContent(ctx context.Context, req *model.LLMRe
 				var msgDelta anthropicMessageDelta
 				if err := json.Unmarshal([]byte(dataStr), &msgDelta); err == nil {
 					a.AddTokens(msgDelta.Usage.OutputTokens)
+					// s11 Error Recovery: surface output truncation at the token limit.
+					if msgDelta.Delta.StopReason == "max_tokens" {
+						if !yield(&model.LLMResponse{
+							Content: &genai.Content{
+								Role: "model",
+								Parts: []*genai.Part{
+									{Text: "\n\n⚠️ [Output truncated at max_tokens — response was cut off. Ask me to continue if needed.]"},
+								},
+							},
+							Partial:      true,
+							TurnComplete: false,
+						}, nil) {
+							return
+						}
+					}
 				}
 
 			case "message_stop":

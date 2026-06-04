@@ -515,6 +515,23 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 
 			// 5. Finish reason with no pending tools → TurnComplete: true
 			if choice.FinishReason != "" {
+				// s11 Error Recovery: surface output truncation so the agent/user
+				// knows the response was cut off at the token limit rather than
+				// completing naturally.
+				if choice.FinishReason == "length" {
+					if !yield(&model.LLMResponse{
+						Content: &genai.Content{
+							Role: "model",
+							Parts: []*genai.Part{
+								{Text: "\n\n⚠️ [Output truncated at max_tokens — response was cut off. Ask me to continue if needed.]"},
+							},
+						},
+						Partial:      true,
+						TurnComplete: false,
+					}, nil) {
+						return
+					}
+				}
 				if !yield(&model.LLMResponse{
 					Content: &genai.Content{
 						Role: "model",

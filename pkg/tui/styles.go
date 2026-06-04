@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -85,4 +87,20 @@ var (
 
 	StyleDiffDel = lipgloss.NewStyle().
 			Foreground(ColorDanger)
+
+	// StyleSpinner styles the braille spinner frame (hoisted from per-frame
+	// allocation in the render loop).
+	StyleSpinner = lipgloss.NewStyle().Foreground(ColorSecondary)
+
+	// StyleThinkingText styles the "thinking..." label during stateThinking.
+	StyleThinkingText = lipgloss.NewStyle().Foreground(ColorPrimary).Italic(true)
 )
+
+// spinnerFrames holds the braille animation frames shared across render states.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+// currentSpinnerFrame returns the styled spinner glyph for the current time.
+func currentSpinnerFrame() string {
+	frame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
+	return StyleSpinner.Render(frame)
+}

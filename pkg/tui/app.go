@@ -58,6 +58,11 @@ type App struct {
 	// Stream state
 	streamedText string
 	renderedText string
+	// streamRenderCache memoizes the Glamour render of streamedText so the
+	// expensive CommonMark parse only runs when the text actually changes,
+	// not on every tick/keystroke during streaming.
+	streamRenderCacheKey string
+	streamRenderCacheVal string
 	currentPrompt string
 	lastError    error
 	lastRawResp  string
@@ -210,6 +215,22 @@ func (a *App) activeComponents() []Component {
 	}
 }
 
+// renderStreamedMarkdown returns the Glamour-rendered form of the current
+// streamedText, memoized so the parse only runs when the text changes. During
+// streaming this is called on every tick, so caching avoids redundant CPU work.
+func (a *App) renderStreamedMarkdown() string {
+	if a.streamedText == "" {
+		return ""
+	}
+	if a.streamRenderCacheKey == a.streamedText {
+		return a.streamRenderCacheVal
+	}
+	rendered := RenderMarkdown(a.streamedText)
+	a.streamRenderCacheKey = a.streamedText
+	a.streamRenderCacheVal = rendered
+	return rendered
+}
+
 // Render collects output from all components.
 func (a *App) Render() []string {
 	a.cursorRow = -1
@@ -240,9 +261,7 @@ func (a *App) Render() []string {
 	// 3. Active stream / thinking / confirming
 	switch a.state {
 	case stateThinking:
-		spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
-		spinnerStyled := lipgloss.NewStyle().Foreground(ColorSecondary).Render(spinnerFrame)
+		spinnerStyled := currentSpinnerFrame()
 
 		if a.chat.activeTool.Running {
 			color, icon, _ := getToolCategoryTheme(a.chat.activeTool.Name)
@@ -265,13 +284,13 @@ func (a *App) Render() []string {
 				}
 			}
 		} else {
-			textStyled := lipgloss.NewStyle().Foreground(ColorPrimary).Italic(true).Render("thinking...")
+			textStyled := StyleThinkingText.Render("thinking...")
 			lines = append(lines, "", "  "+spinnerStyled+" "+textStyled)
 		}
 	case stateStreaming:
 		fullText := a.renderedText
 		if a.streamedText != "" {
-			fullText = RenderMarkdown(a.streamedText)
+			fullText = a.renderStreamedMarkdown()
 		}
 		if fullText != "" {
 			rendered := StyleAgentMsg.Render(fullText)
@@ -279,9 +298,7 @@ func (a *App) Render() []string {
 			lines = append(lines, strings.Split(rendered, "\n")...)
 		}
 		if a.chat.activeTool.Running {
-			spinnerFrames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-			spinnerFrame := spinnerFrames[(time.Now().UnixNano()/100000000)%int64(len(spinnerFrames))]
-			spinnerStyled := lipgloss.NewStyle().Foreground(ColorSecondary).Render(spinnerFrame)
+			spinnerStyled := currentSpinnerFrame()
 
 			color, icon, _ := getToolCategoryTheme(a.chat.activeTool.Name)
 			activity := FormatToolActivity(a.chat.activeTool.Name, a.chat.activeTool.Args)
