@@ -271,3 +271,32 @@ func TestLoggerManager_LogWrite(t *testing.T) {
 		t.Errorf("expected redacted api_key, got: %v", parsed.Metadata["api_key"])
 	}
 }
+
+func TestLoggerManager_LogRunEventWritesReplayableSequence(t *testing.T) {
+	tempDir := t.TempDir()
+	lm := &LoggerManager{logsDir: tempDir}
+	lm.SetSessionID("run-events")
+
+	lm.LogRunEvent(RunEvent{RunID: "run-1", Sequence: 1, Type: "run.accepted"})
+	lm.LogRunEvent(RunEvent{RunID: "run-1", Sequence: 2, Type: "run.completed"})
+
+	data, err := os.ReadFile(filepath.Join(tempDir, "run-run-events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("got %d run events, want 2", len(lines))
+	}
+
+	var first, second RunEvent
+	if err := json.Unmarshal([]byte(lines[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(lines[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.SchemaVersion != 1 || first.Sequence != 1 || second.Sequence != 2 {
+		t.Fatalf("unexpected replay sequence: first=%+v second=%+v", first, second)
+	}
+}

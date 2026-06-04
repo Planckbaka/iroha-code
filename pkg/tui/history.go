@@ -20,7 +20,7 @@ const (
 // HistoryEntry stores a single conversation turn with structured metadata.
 type HistoryEntry struct {
 	Role     MessageRole
-	Content  string         // Raw content (markdown)
+	Content  string // Raw content (markdown)
 	TS       time.Time
 	Tokens   int
 	Metadata map[string]any // tool name, duration, error, etc.
@@ -28,10 +28,12 @@ type HistoryEntry struct {
 
 // HistoryStore manages structured conversation history with viewport rendering.
 type HistoryStore struct {
-	entries       []HistoryEntry
-	scrollOffset  int               // 0 = most recent visible
-	renderedCache map[int][]string  // entry index -> rendered lines
-	cachedWidth   int
+	entries        []HistoryEntry
+	scrollOffset   int              // 0 = most recent visible
+	renderedCache  map[int][]string // entry index -> rendered lines
+	cachedWidth    int
+	lastTotalLines int
+	lastMaxLines   int
 }
 
 // NewHistoryStore creates an empty HistoryStore.
@@ -48,7 +50,6 @@ func (s *HistoryStore) Add(entry HistoryEntry) {
 		entry.TS = time.Now()
 	}
 	s.entries = append(s.entries, entry)
-	s.scrollOffset = 0
 }
 
 // Render returns the visible lines for the current viewport.
@@ -56,26 +57,39 @@ func (s *HistoryStore) Add(entry HistoryEntry) {
 // maxLines: maximum lines to return (terminal height minus fixed UI chrome)
 // scrollOffset: how far back the user has scrolled (0 = most recent)
 func (s *HistoryStore) Render(width, maxLines int) []string {
+	return s.RenderWithTail(width, maxLines, nil)
+}
+
+// RenderWithTail renders history and transient lines as one scrollable
+// timeline. Transient lines are the active model stream, tool output, or
+// confirmation UI that has not yet been committed to history.
+func (s *HistoryStore) RenderWithTail(width, maxLines int, tail []string) []string {
 	if len(s.entries) == 0 || width <= 0 || maxLines <= 0 {
-		return nil
+		if len(tail) == 0 || width <= 0 || maxLines <= 0 {
+			return nil
+		}
 	}
 
-	// Render all entries into lines
 	var allLines []string
 	for i, entry := range s.entries {
 		rendered := s.renderEntry(i, entry, width)
 		allLines = append(allLines, rendered...)
 	}
+	allLines = append(allLines, tail...)
 
-	// Apply scroll offset: if scrollOffset > 0, show older content
 	totalLines := len(allLines)
+	if s.scrollOffset > 0 && s.lastTotalLines > 0 && totalLines > s.lastTotalLines {
+		// Keep the same visible content anchored while new events arrive below.
+		s.scrollOffset += totalLines - s.lastTotalLines
+	}
+	s.lastTotalLines = totalLines
+	s.lastMaxLines = maxLines
+	s.clampScrollOffset()
+
 	if totalLines <= maxLines {
 		return allLines
 	}
 
-	// Calculate visible window from the bottom
-	// scrollOffset=0 shows the last maxLines lines
-	// scrollOffset=N shows N lines further back
 	startIdx := max(0, totalLines-maxLines-s.scrollOffset)
 	endIdx := min(totalLines, startIdx+maxLines)
 
@@ -115,6 +129,7 @@ func (s *HistoryStore) Search(query string) []int {
 func (s *HistoryStore) InvalidateCache() {
 	s.renderedCache = make(map[int][]string)
 	s.cachedWidth = 0
+	s.lastTotalLines = 0
 }
 
 // Len returns the number of history entries.
@@ -169,6 +184,9 @@ func (s *HistoryStore) renderEntry(idx int, entry HistoryEntry, width int) []str
 
 // clampScrollOffset ensures scroll doesn't exceed bounds.
 func (s *HistoryStore) clampScrollOffset() {
+	if s.lastTotalLines == 0 {
+		return
+	}
 	maxScroll := s.maxScrollOffset()
 	if s.scrollOffset > maxScroll {
 		s.scrollOffset = maxScroll
@@ -181,8 +199,7 @@ func (s *HistoryStore) clampScrollOffset() {
 // maxScrollOffset returns the maximum allowed scroll offset based on entry count.
 // This is a rough estimate; exact calculation requires rendering all entries.
 func (s *HistoryStore) maxScrollOffset() int {
-	// Estimate ~3 lines per entry as a safe maximum
-	return len(s.entries) * 3
+	return max(0, s.lastTotalLines-s.lastMaxLines)
 }
 
 // ResetScroll resets scroll offset to 0 (bottom/most recent).

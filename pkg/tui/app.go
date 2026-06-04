@@ -12,8 +12,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/google/uuid"
-	"google.golang.org/adk/session"
 	"golang.org/x/term"
+	"google.golang.org/adk/session"
 )
 
 // App orchestrates all TUI components, dispatches events, and collects renders.
@@ -35,8 +35,8 @@ type App struct {
 	history *HistoryStore
 
 	// External interfaces
-	runner  *agent.CustomRunner
-	respon  BridgeResponder
+	runner *agent.CustomRunner
+	respon BridgeResponder
 
 	// Session context
 	ctx       context.Context
@@ -63,9 +63,9 @@ type App struct {
 	// not on every tick/keystroke during streaming.
 	streamRenderCacheKey string
 	streamRenderCacheVal string
-	currentPrompt string
-	lastError    error
-	lastRawResp  string
+	currentPrompt        string
+	lastError            error
+	lastRawResp          string
 
 	// Startup
 	startInSessionPicker bool
@@ -87,6 +87,7 @@ func NewApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 	app := &App{
 		state:                statePermissionSelect,
 		width:                80,
+		height:               24,
 		runner:               runner,
 		ctx:                  ctx,
 		cancel:               cancel,
@@ -241,24 +242,22 @@ func (a *App) Render() []string {
 		return a.screens.Render(a.width)
 	}
 
-	var lines []string
+	var topLines []string
 
 	// 1. Dashboards
 	if todo := RenderTodoDashboard(); todo != "" {
-		lines = append(lines, strings.Split(strings.TrimRight(todo, "\n"), "\n")...)
+		topLines = append(topLines, strings.Split(strings.TrimRight(todo, "\n"), "\n")...)
 	}
 	if task := RenderTaskDashboard(); task != "" {
-		lines = append(lines, strings.Split(strings.TrimRight(task, "\n"), "\n")...)
+		topLines = append(topLines, strings.Split(strings.TrimRight(task, "\n"), "\n")...)
 	}
 
-	// 2. Chat history
-	if a.history.Len() > 0 {
-		lines = append(lines, a.history.Render(a.width, 10000)...)
-	} else if a.state == statePrompt {
-		lines = append(lines, strings.Split(strings.TrimRight(RenderWelcomeCard(a.runner), "\n"), "\n")...)
+	var activeLines []string
+	if a.history.Len() == 0 && a.state == statePrompt {
+		activeLines = append(activeLines, strings.Split(strings.TrimRight(RenderWelcomeCard(a.runner), "\n"), "\n")...)
 	}
 
-	// 3. Active stream / thinking / confirming
+	// 2. Active stream / thinking / confirming
 	switch a.state {
 	case stateThinking:
 		spinnerStyled := currentSpinnerFrame()
@@ -269,7 +268,7 @@ func (a *App) Render() []string {
 			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
 			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
 
-			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
+			activeLines = append(activeLines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
 
 			if len(a.chat.activeTool.StreamLines) > 0 {
 				cmdDisplay := ""
@@ -280,12 +279,12 @@ func (a *App) Render() []string {
 				}
 				streamArea := RenderShellStreamArea(a.chat.activeTool.StreamLines, cmdDisplay, a.width)
 				if streamArea != "" {
-					lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+					activeLines = append(activeLines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
 				}
 			}
 		} else {
 			textStyled := StyleThinkingText.Render("thinking...")
-			lines = append(lines, "", "  "+spinnerStyled+" "+textStyled)
+			activeLines = append(activeLines, "", "  "+spinnerStyled+" "+textStyled)
 		}
 	case stateStreaming:
 		fullText := a.renderedText
@@ -294,8 +293,8 @@ func (a *App) Render() []string {
 		}
 		if fullText != "" {
 			rendered := StyleAgentMsg.Render(fullText)
-			lines = append(lines, "")
-			lines = append(lines, strings.Split(rendered, "\n")...)
+			activeLines = append(activeLines, "")
+			activeLines = append(activeLines, strings.Split(rendered, "\n")...)
 		}
 		if a.chat.activeTool.Running {
 			spinnerStyled := currentSpinnerFrame()
@@ -305,7 +304,7 @@ func (a *App) Render() []string {
 			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
 			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
 
-			lines = append(lines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
+			activeLines = append(activeLines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
 
 			if len(a.chat.activeTool.StreamLines) > 0 {
 				cmdDisplay := ""
@@ -316,25 +315,24 @@ func (a *App) Render() []string {
 				}
 				streamArea := RenderShellStreamArea(a.chat.activeTool.StreamLines, cmdDisplay, a.width)
 				if streamArea != "" {
-					lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+					activeLines = append(activeLines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
 				}
 			}
 		}
 	case stateConfirming:
-		lines = append(lines, a.confirm.Render(a.width)...)
+		activeLines = append(activeLines, a.confirm.Render(a.width)...)
 	}
 
-	// 4. Separator
-	lines = append(lines, lipgloss.NewStyle().Foreground(ColorSecondary).Render(strings.Repeat("─", 80)))
+	// 3. Fixed input chrome
+	var bottomLines []string
+	bottomLines = append(bottomLines, lipgloss.NewStyle().Foreground(ColorSecondary).Render(strings.Repeat("─", max(1, a.width))))
 
-	// 5. Slash menu
 	if slashLines := a.slash.Render(a.width); len(slashLines) > 0 {
-		lines = append(lines, slashLines...)
+		bottomLines = append(bottomLines, slashLines...)
 	}
 
-	// 6. Input area
-	inputStartRow := len(lines)
-	lines = append(lines, a.input.Render(a.width)...)
+	inputStartRow := len(bottomLines)
+	bottomLines = append(bottomLines, a.input.Render(a.width)...)
 
 	if a.state == statePrompt {
 		promptPrefix := "┃ "
@@ -359,8 +357,21 @@ func (a *App) Render() []string {
 		a.cursorRow = inputStartRow + cursorLineIdx
 	}
 
-	// 7. Status bar
-	lines = append(lines, a.status.Render(a.width)...)
+	bottomLines = append(bottomLines, a.status.Render(a.width)...)
+
+	viewportLines := a.height - len(topLines) - len(bottomLines)
+	if viewportLines < 1 {
+		viewportLines = 1
+	}
+	timeline := a.history.RenderWithTail(a.width, viewportLines, activeLines)
+
+	lines := make([]string, 0, len(topLines)+len(timeline)+len(bottomLines))
+	lines = append(lines, topLines...)
+	lines = append(lines, timeline...)
+	if a.cursorRow >= 0 {
+		a.cursorRow += len(topLines) + len(timeline)
+	}
+	lines = append(lines, bottomLines...)
 
 	return lines
 }

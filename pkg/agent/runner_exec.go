@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 
+	"github.com/google/uuid"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
 	"google.golang.org/adk/runner"
@@ -18,9 +20,23 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 	cr.deps.ToolCircuitBreaker.Reset()
 	cr.deps.Logger.SetSessionID(sessionID)
 
+	runID := uuid.NewString()
+	var runSequence atomic.Uint64
+	emitRunEvent := func(eventType string, metadata map[string]any) {
+		cr.deps.Logger.LogRunEvent(RunEvent{
+			SessionID: sessionID,
+			RunID:     runID,
+			Sequence:  runSequence.Add(1),
+			Type:      eventType,
+			Metadata:  metadata,
+		})
+	}
+	emitRunEvent("run.accepted", map[string]any{"user_id": userID})
+
 	LogAudit(CatUserInput, "user_prompt", "User submitted a prompt to the agent", map[string]any{
 		"user_id":    userID,
 		"session_id": sessionID,
+		"run_id":     runID,
 		"prompt":     prompt,
 	})
 
@@ -28,16 +44,20 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 	cr.deps.Bridge.Reset()
 	go func() {
 		<-ctx.Done()
+		emitRunEvent("run.cancel_requested", map[string]any{"reason": ctx.Err().Error()})
 		cr.deps.Bridge.Cancel()
 	}()
 
 	go func() {
+		emitRunEvent("run.started", nil)
 		defer func() {
 			if r := recover(); r != nil {
 				rollbackPendingEdits()
 				err := fmt.Errorf("panic in agent execution: %v\n%s", r, debug.Stack())
+				emitRunEvent("run.failed", map[string]any{"reason": "panic", "error": err.Error()})
 				LogError(CatSystem, "runner_panic", "Agent execution panicked", err, map[string]any{
 					"session_id": sessionID,
+					"run_id":     runID,
 				})
 				onError(err)
 				onDone()
@@ -85,8 +105,10 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 			SessionID: sessionID,
 		})
 		if hookUserResult.Blocked {
+			emitRunEvent("run.failed", map[string]any{"reason": "prompt_blocked", "error": hookUserResult.BlockReason})
 			LogAudit(CatUserInput, "user_prompt_blocked", "User prompt blocked by hook", map[string]any{
 				"session_id": sessionID,
+				"run_id":     runID,
 				"reason":     hookUserResult.BlockReason,
 			})
 			onError(fmt.Errorf("prompt blocked by hook: %s", hookUserResult.BlockReason))
@@ -114,16 +136,21 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 		for ev, err := range events {
 			if ctx.Err() != nil {
 				rollbackPendingEdits()
+				emitRunEvent("run.cancelled", map[string]any{"reason": ctx.Err().Error()})
+				onDone()
 				return
 			}
 			if err != nil {
+				emitRunEvent("run.failed", map[string]any{"reason": "event_stream", "error": err.Error()})
 				LogError(CatSystem, "runner_event_error", "Error received during agent run loop event streaming", err, map[string]any{
 					"session_id": sessionID,
+					"run_id":     runID,
 				})
 				onError(err)
 				return
 			}
 			if ev != nil {
+				emitRunEvent("run.event_received", map[string]any{"has_content": ev.Content != nil})
 				// Track response length for HookAgentResponse
 				if ev.Content != nil {
 					for _, p := range ev.Content.Parts {
@@ -146,7 +173,9 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 
 		LogInfo(CatSystem, "runner_complete", "Agent execution completed successfully", map[string]any{
 			"session_id": sessionID,
+			"run_id":     runID,
 		})
+		emitRunEvent("run.completed", map[string]any{"response_length": responseTextLen})
 
 		// Trigger Aider-style Git Auto-Commit if repository has staged/unstaged changes
 		if hasChanges, err := GitHasChanges(); err == nil && hasChanges {

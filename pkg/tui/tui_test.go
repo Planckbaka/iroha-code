@@ -3,6 +3,7 @@ package tui
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -230,18 +231,43 @@ func TestToolStreamLinesAccumulation(t *testing.T) {
 	// App TUI components accumulate streamed stdout across status updates.
 	app := NewApp(nil, "", false, "")
 	app.chat.SetActiveTool(agent.ToolStatus{
-		Name:    "shell_run",
-		Running: true,
+		Name:        "shell_run",
+		Running:     true,
 		StreamLines: []string{"line1"},
 	})
 
 	app.handleToolStatus(agent.ToolStatus{
-		Name:    "shell_run",
-		Running: true,
+		Name:        "shell_run",
+		Running:     true,
 		StreamLines: []string{"line2"},
 	})
 
 	if len(app.chat.activeTool.StreamLines) != 2 || app.chat.activeTool.StreamLines[0] != "line1" || app.chat.activeTool.StreamLines[1] != "line2" {
 		t.Errorf("expected App activeTool StreamLines to accumulate, got: %v", app.chat.activeTool.StreamLines)
+	}
+}
+
+func TestAppRenderUsesTerminalHeightViewport(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+	app.width = 80
+	app.height = 12
+	for i := 0; i < 30; i++ {
+		app.history.Add(HistoryEntry{Role: RoleSystem, Content: fmt.Sprintf("line-%02d", i)})
+	}
+
+	lines := app.Render()
+	if len(lines) > app.height {
+		t.Fatalf("rendered %d lines for terminal height %d", len(lines), app.height)
+	}
+	joined := strings.Join(lines, "\n")
+	if strings.Contains(joined, "line-00") {
+		t.Fatal("viewport rendered oldest content while positioned at bottom")
+	}
+
+	app.HandleEvent(Key{Type: KeyPgUp})
+	scrolled := strings.Join(app.Render(), "\n")
+	if scrolled == joined {
+		t.Fatal("PageUp did not change the visible App frame")
 	}
 }

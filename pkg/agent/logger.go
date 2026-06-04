@@ -78,6 +78,18 @@ type AuditLogRecord struct {
 	Metadata   map[string]any `json:"metadata,omitempty"`
 }
 
+// RunEvent is the canonical replay record for one agent execution lifecycle.
+// It intentionally stores event metadata rather than full model/tool payloads.
+type RunEvent struct {
+	SchemaVersion int            `json:"schema_version"`
+	Timestamp     string         `json:"timestamp"`
+	SessionID     string         `json:"session_id"`
+	RunID         string         `json:"run_id"`
+	Sequence      uint64         `json:"sequence"`
+	Type          string         `json:"type"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
+}
+
 // LoggerManager manages dual log writers for structured JSONL and plain-text.
 type LoggerManager struct {
 	mu        sync.Mutex
@@ -219,6 +231,39 @@ func (lm *LoggerManager) LogWrite(event AuditEvent) {
 		redactedPlain := RedactSecrets(plainMsg)
 		_, _ = lm.plainFile.WriteString(redactedPlain)
 	}
+}
+
+// LogRunEvent appends a versioned lifecycle event to the session replay log.
+func (lm *LoggerManager) LogRunEvent(event RunEvent) {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = 1
+	}
+	if event.Timestamp == "" {
+		event.Timestamp = time.Now().Format(time.RFC3339Nano)
+	}
+	if event.SessionID == "" {
+		event.SessionID = lm.sessionID
+	}
+	if event.SessionID == "" {
+		event.SessionID = "uninitialized"
+	}
+
+	_ = os.MkdirAll(lm.logsDir, 0755)
+	path := filepath.Join(lm.logsDir, fmt.Sprintf("run-%s.jsonl", event.SessionID))
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return
+	}
+	defer func() { _ = file.Close() }()
+
+	data, err := json.Marshal(event)
+	if err != nil {
+		return
+	}
+	_, _ = file.WriteString(RedactSecrets(string(data)) + "\n")
 }
 
 // LogInfo helper for LevelInfo

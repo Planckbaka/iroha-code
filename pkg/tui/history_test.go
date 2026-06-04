@@ -42,12 +42,12 @@ func TestHistoryStore_AddSetsTimestamp(t *testing.T) {
 	}
 }
 
-func TestHistoryStore_AddResetsScroll(t *testing.T) {
+func TestHistoryStore_AddPreservesScroll(t *testing.T) {
 	s := NewHistoryStore()
 	s.scrollOffset = 10
 	s.Add(HistoryEntry{Role: RoleUser, Content: "reset scroll"})
-	if s.ScrollOffset() != 0 {
-		t.Error("Add should reset scroll offset to 0")
+	if s.ScrollOffset() != 10 {
+		t.Error("Add should preserve scroll position when the user is reading older content")
 	}
 }
 
@@ -96,6 +96,7 @@ func TestHistoryStore_ScrollUp(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		s.Add(HistoryEntry{Role: RoleUser, Content: "entry"})
 	}
+	s.Render(80, 5)
 
 	s.ScrollUp(5)
 	if s.ScrollOffset() != 5 {
@@ -106,6 +107,36 @@ func TestHistoryStore_ScrollUp(t *testing.T) {
 	// Should clamp to max
 	if s.ScrollOffset() < 5 {
 		t.Error("scroll up should not go negative after clamping")
+	}
+}
+
+func TestHistoryStore_ClampsUsingRenderedLineCount(t *testing.T) {
+	s := NewHistoryStore()
+	for i := 0; i < 10; i++ {
+		s.Add(HistoryEntry{Role: RoleSystem, Content: "line"})
+	}
+
+	s.Render(80, 4)
+	s.ScrollUp(100)
+
+	if got, want := s.ScrollOffset(), 6; got != want {
+		t.Fatalf("scroll offset = %d, want actual rendered maximum %d", got, want)
+	}
+}
+
+func TestHistoryStore_RenderWithTailKeepsViewportAnchored(t *testing.T) {
+	s := NewHistoryStore()
+	for i := 0; i < 8; i++ {
+		s.Add(HistoryEntry{Role: RoleSystem, Content: "history"})
+	}
+
+	before := s.RenderWithTail(80, 4, []string{"tail-1"})
+	s.ScrollUp(2)
+	before = s.RenderWithTail(80, 4, []string{"tail-1"})
+	after := s.RenderWithTail(80, 4, []string{"tail-1", "tail-2"})
+
+	if strings.Join(before, "\n") != strings.Join(after, "\n") {
+		t.Fatalf("viewport moved when transient content arrived\nbefore: %q\nafter:  %q", before, after)
 	}
 }
 
