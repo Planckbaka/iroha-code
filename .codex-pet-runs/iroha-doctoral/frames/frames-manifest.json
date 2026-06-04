@@ -20,7 +20,7 @@
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/04.png",
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/05.png"
       ],
-      "method": "components"
+      "method": "stable-slots"
     },
     {
       "state": "running-right",
@@ -34,7 +34,7 @@
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/06.png",
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/07.png"
       ],
-      "method": "slots"
+      "method": "stable-slots"
     },
     {
       "state": "running-left",
@@ -48,7 +48,7 @@
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/06.png",
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/07.png"
       ],
-      "method": "components"
+      "method": "stable-slots"
     },
     {
       "state": "waving",
@@ -58,7 +58,68 @@
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waving/02.png",
         "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waving/03.png"
       ],
-      "method": "components"
+      "method": "stable-slots"
+    },
+    {
+      "state": "jumping",
+      "frames": [
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/00.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/01.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/02.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/03.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/04.png"
+      ],
+      "method": "stable-slots"
+    },
+    {
+      "state": "failed",
+      "frames": [
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/00.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/01.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/02.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/03.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/04.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/05.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/06.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/07.png"
+      ],
+      "method": "stable-slots"
+    },
+    {
+      "state": "waiting",
+      "frames": [
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/00.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/01.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/02.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/03.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/04.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/05.png"
+      ],
+      "method": "stable-slots"
+    },
+    {
+      "state": "running",
+      "frames": [
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/00.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/01.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/02.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/03.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/04.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/05.png"
+      ],
+      "method": "stable-slots"
+    },
+    {
+      "state": "review",
+      "frames": [
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/00.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/01.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/02.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/03.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/04.png",
+        "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/05.png"
+      ],
+      "method": "stable-slots"
     }
   ]
 }

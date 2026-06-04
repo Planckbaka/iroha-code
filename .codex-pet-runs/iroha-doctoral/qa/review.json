@@ -1,0 +1,990 @@
+{
+  "ok": true,
+  "frames_root": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames",
+  "errors": [],
+  "warnings": [
+    "idle used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "running-right used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "running-left used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "waving used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "jumping used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "failed used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "waiting used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "running used extraction method stable-slots; confirm motion playback remains stable and unclipped",
+    "review used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+  ],
+  "rows": [
+    {
+      "state": "idle",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "idle used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8249,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 1
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8171,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 2
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8128,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 3
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8087,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 3
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8106,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 3
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/idle/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8150,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 4
+        }
+      ]
+    },
+    {
+      "state": "running-right",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "running-right used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8358,
+          "bbox": [
+            46,
+            6,
+            145,
+            201
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 30
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9717,
+          "bbox": [
+            46,
+            6,
+            145,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 26
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9064,
+          "bbox": [
+            46,
+            5,
+            145,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 18
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9441,
+          "bbox": [
+            46,
+            5,
+            145,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 25
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8958,
+          "bbox": [
+            46,
+            5,
+            145,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 19
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9095,
+          "bbox": [
+            46,
+            6,
+            145,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 28
+        },
+        {
+          "index": 6,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9104,
+          "bbox": [
+            46,
+            6,
+            145,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 24
+        },
+        {
+          "index": 7,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-right/07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9062,
+          "bbox": [
+            46,
+            7,
+            145,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 18
+        }
+      ]
+    },
+    {
+      "state": "running-left",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "running-left used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8358,
+          "bbox": [
+            47,
+            6,
+            146,
+            201
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 30
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9717,
+          "bbox": [
+            47,
+            6,
+            146,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 26
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9064,
+          "bbox": [
+            47,
+            5,
+            146,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 18
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9441,
+          "bbox": [
+            47,
+            5,
+            146,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 26
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8958,
+          "bbox": [
+            47,
+            5,
+            146,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 19
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9095,
+          "bbox": [
+            47,
+            6,
+            146,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 28
+        },
+        {
+          "index": 6,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9104,
+          "bbox": [
+            47,
+            6,
+            146,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 26
+        },
+        {
+          "index": 7,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running-left/07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9062,
+          "bbox": [
+            47,
+            7,
+            146,
+            202
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 19
+        }
+      ]
+    },
+    {
+      "state": "waving",
+      "expected_frames": 4,
+      "actual_frames": 4,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "waving used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waving/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8163,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 9
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waving/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8308,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 3
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waving/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8378,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 9
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waving/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8331,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 4
+        }
+      ]
+    },
+    {
+      "state": "jumping",
+      "expected_frames": 5,
+      "actual_frames": 5,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "jumping used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6137,
+          "bbox": [
+            57,
+            61,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 10
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6269,
+          "bbox": [
+            54,
+            18,
+            138,
+            169
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 8
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6220,
+          "bbox": [
+            53,
+            5,
+            139,
+            148
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 5
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6811,
+          "bbox": [
+            54,
+            21,
+            138,
+            186
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 3
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/jumping/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 6479,
+          "bbox": [
+            57,
+            56,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 7
+        }
+      ]
+    },
+    {
+      "state": "failed",
+      "expected_frames": 8,
+      "actual_frames": 8,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "failed used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9070,
+          "bbox": [
+            55,
+            5,
+            137,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 19
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 9543,
+          "bbox": [
+            53,
+            5,
+            139,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 12
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8690,
+          "bbox": [
+            57,
+            5,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 18
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8670,
+          "bbox": [
+            55,
+            11,
+            137,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 17
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8779,
+          "bbox": [
+            56,
+            11,
+            136,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 15
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8062,
+          "bbox": [
+            57,
+            16,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 10
+        },
+        {
+          "index": 6,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/06.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7306,
+          "bbox": [
+            56,
+            36,
+            136,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 6
+        },
+        {
+          "index": 7,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/failed/07.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8332,
+          "bbox": [
+            58,
+            12,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 10
+        }
+      ]
+    },
+    {
+      "state": "waiting",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "waiting used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8613,
+          "bbox": [
+            51,
+            5,
+            140,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 11
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8283,
+          "bbox": [
+            59,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 9
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8188,
+          "bbox": [
+            57,
+            9,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 14
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8343,
+          "bbox": [
+            54,
+            6,
+            138,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 17
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8276,
+          "bbox": [
+            55,
+            7,
+            137,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 11
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/waiting/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8384,
+          "bbox": [
+            57,
+            8,
+            135,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 10
+        }
+      ]
+    },
+    {
+      "state": "running",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "running used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8356,
+          "bbox": [
+            58,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 6
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8488,
+          "bbox": [
+            58,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 49
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7784,
+          "bbox": [
+            62,
+            5,
+            129,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 6
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7406,
+          "bbox": [
+            62,
+            7,
+            129,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 5
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8417,
+          "bbox": [
+            58,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 10
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/running/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8019,
+          "bbox": [
+            58,
+            5,
+            133,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 5
+        }
+      ]
+    },
+    {
+      "state": "review",
+      "expected_frames": 6,
+      "actual_frames": 6,
+      "extraction_method": "stable-slots",
+      "ok": true,
+      "errors": [],
+      "warnings": [
+        "review used extraction method stable-slots; confirm motion playback remains stable and unclipped"
+      ],
+      "frames": [
+        {
+          "index": 0,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/00.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7925,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 4
+        },
+        {
+          "index": 1,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/01.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 8116,
+          "bbox": [
+            58,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 7
+        },
+        {
+          "index": 2,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/02.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7582,
+          "bbox": [
+            63,
+            5,
+            129,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 4
+        },
+        {
+          "index": 3,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/03.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7887,
+          "bbox": [
+            58,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 8
+        },
+        {
+          "index": 4,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/04.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7999,
+          "bbox": [
+            58,
+            5,
+            134,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 5
+        },
+        {
+          "index": 5,
+          "file": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/frames/review/05.png",
+          "width": 192,
+          "height": 208,
+          "nontransparent_pixels": 7861,
+          "bbox": [
+            60,
+            5,
+            132,
+            203
+          ],
+          "edge_pixels": 0,
+          "chroma_adjacent_pixels": 2
+        }
+      ]
+    }
+  ]
+}

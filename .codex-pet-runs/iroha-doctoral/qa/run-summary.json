@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "run_dir": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral",
+  "spritesheet": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/final/spritesheet.webp",
+  "validation": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/final/validation.json",
+  "contact_sheet": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/qa/contact-sheet.png",
+  "review": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/qa/review.json",
+  "package": "/Users/akiwayne/Documents/Project2026/go-project/go-claude/.codex-pet-runs/iroha-doctoral/package/iroha-doctoral",
+  "install_status": "awaiting permission to copy into ~/.codex/pets/iroha-doctoral"
+}
