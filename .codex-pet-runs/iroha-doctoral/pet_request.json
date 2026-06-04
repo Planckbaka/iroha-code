@@ -1,7 +1,7 @@
 {
   "pet_id": "iroha-doctoral",
   "display_name": "Iroha Doctoral",
-  "description": "\u4e00\u4f4d\u53d7\u9152\u5bc4\u5f69\u53f6\u542f\u53d1\u3001\u7a7f\u79d1\u7814\u767d\u5927\u8902\u7684\u5e74\u8f7b\u5973\u6027\u535a\u58eb\u7814\u7a76\u751f\u5ba0\u7269\u3002.",
+  "description": "一位受酒寄彩叶启发、穿科研白大褂的年轻女性博士研究生宠物。.",
   "created_at": "2026-06-04T06:45:26.287809+00:00",
   "atlas": {
     "columns": 8,
@@ -188,7 +188,7 @@
     "name": "magenta",
     "selection": "fallback"
   },
-  "pet_notes": "Original anime-inspired young woman doctoral researcher, inspired by the scholarly presence of Iroha Sakayori without directly reproducing copyrighted character design. Long dark charcoal hair with a subtle violet sheen, intelligent amber-violet eyes, calm sharp expression with a hint of sleep-deprived warmth, oversized clean white research lab coat over muted plum sweater and dark skirt or trousers, simple closed shoes, small attached ID-card shape with no readable text. Compact chibi whole-body silhouette, researcher identity must read clearly at pet size. Keep the lab coat, hairstyle, face, palette, and proportions identical across all animation states.",
+  "pet_notes": "酒寄彩叶博士研究生形象，严格依据用户参考设计：短圆润深紫色波波头，鲜明青绿色内层挑染，蓝灰色眼睛，温柔聪慧神情，纤细青年女性比例；白色科研大褂覆盖水手领浅色上衣与蓝绿色半裙，白袜黑色乐福鞋，米色斜挎包与粉色挂件。所有动画状态保持发型、配色、白大褂、包和挂件完全一致。",
   "style_preset": "sticker",
   "style_notes": "Polished Japanese anime chibi sticker sprite, clean dark outline, flat cel shading, expressive face, crisp opaque edges, no text, no shadows, no scenery.",
   "style_contract": "Pet-safe sprite: compact full-body mascot, readable in a 192x208 cell, clear silhouette, simple face, stable palette/materials, and crisp edges for chroma-key extraction. Style `sticker`: Polished sticker mascot with bold clean shapes, crisp outline, flat colors, and minimal highlight detail. User style notes: Polished Japanese anime chibi sticker sprite, clean dark outline, flat cel shading, expressive face, crisp opaque edges, no text, no shadows, no scenery..",

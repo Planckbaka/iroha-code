@@ -197,7 +197,7 @@
     {
       "id": "jumping",
       "kind": "row-strip",
-      "status": "pending",
+      "status": "complete",
       "prompt_file": "prompts/rows/jumping.md",
       "retry_prompt_file": "prompts/row-retries/jumping.md",
       "input_images": [
@@ -227,12 +227,14 @@
         "may_derive": false,
         "reason": "state requires its own generated animation semantics"
       },
-      "mirror_policy": {}
+      "mirror_policy": {},
+      "source_path": "/Users/akiwayne/.codex/generated_images/019e915d-dad3-7010-b6b6-342889ceea2c/ig_08632c8be4aac5b7016a2126313b388191a1084c8ef65f8e77.png",
+      "completed_at": "2026-06-04T07:18:04Z"
     },
     {
       "id": "failed",
       "kind": "row-strip",
-      "status": "pending",
+      "status": "complete",
       "prompt_file": "prompts/rows/failed.md",
       "retry_prompt_file": "prompts/row-retries/failed.md",
       "input_images": [
@@ -262,12 +264,14 @@
         "may_derive": false,
         "reason": "state requires its own generated animation semantics"
       },
-      "mirror_policy": {}
+      "mirror_policy": {},
+      "source_path": "/Users/akiwayne/.codex/generated_images/019e915d-dad3-7010-b6b6-342889ceea2c/ig_08632c8be4aac5b7016a2126c682808191b65ee84b15290512.png",
+      "completed_at": "2026-06-04T07:20:56Z"
     },
     {
       "id": "waiting",
       "kind": "row-strip",
-      "status": "pending",
+      "status": "complete",
       "prompt_file": "prompts/rows/waiting.md",
       "retry_prompt_file": "prompts/row-retries/waiting.md",
       "input_images": [
@@ -297,7 +301,9 @@
         "may_derive": false,
         "reason": "state requires its own generated animation semantics"
       },
-      "mirror_policy": {}
+      "mirror_policy": {},
+      "source_path": "/Users/akiwayne/.codex/generated_images/019e915d-dad3-7010-b6b6-342889ceea2c/ig_08632c8be4aac5b7016a2127eddc6c819192a77fb8a30eaec0.png",
+      "completed_at": "2026-06-04T07:25:07Z"
     },
     {
       "id": "running",

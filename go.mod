@@ -3,8 +3,6 @@ module iroha
 go 1.26.1
 
 require (
-	github.com/atotto/clipboard v0.1.4
-	github.com/aymanbagabas/go-osc52/v2 v2.0.1
 	github.com/charmbracelet/glamour v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/firebase/genkit/go v1.8.0
@@ -23,6 +21,7 @@ require (
 	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
 	github.com/anthropics/anthropic-sdk-go v1.23.0 // indirect
+	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/aymanbagabas/go-udiff v0.3.1 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
