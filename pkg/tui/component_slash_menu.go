@@ -2,23 +2,17 @@ package tui
 
 import "strings"
 
-// SlashCommand represents a single slash command entry.
-type SlashCommand struct {
-	Command     string
-	Description string
-}
-
 // SlashMenuComponent filters and renders slash commands for the input area.
 type SlashMenuComponent struct {
 	BaseComponent
 	active bool
-	items  []SlashCommand
+	items  []SlashMenuItem
 	index  int
-	all    []SlashCommand
+	all    []SlashMenuItem
 }
 
 // NewSlashMenuComponent creates a SlashMenuComponent with the given commands.
-func NewSlashMenuComponent(commands []SlashCommand) *SlashMenuComponent {
+func NewSlashMenuComponent(commands []SlashMenuItem) *SlashMenuComponent {
 	return &SlashMenuComponent{
 		all: commands,
 	}
@@ -63,7 +57,7 @@ func (sm *SlashMenuComponent) Update(input string) {
 	}
 	sm.active = true
 	prefix := strings.ToLower(input)
-	var matched []SlashCommand
+	var matched []SlashMenuItem
 	for _, cmd := range sm.all {
 		if strings.HasPrefix(strings.ToLower(cmd.Command), prefix) {
 			matched = append(matched, cmd)

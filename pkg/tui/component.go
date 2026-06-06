@@ -19,9 +19,5 @@ type Component interface {
 	OnStateChange(oldState, newState TuiState)
 }
 
-// BaseComponent provides common fields for all components.
-type BaseComponent struct {
-	width   int
-	height  int
-	visible bool
-}
+// BaseComponent provides a shared embedding point for all components.
+type BaseComponent struct{}

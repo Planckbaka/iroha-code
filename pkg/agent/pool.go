@@ -182,10 +182,9 @@ func (ap *AgentPool) ExecuteMessage(teammate *Teammate, msg TeamMessage) (string
 		},
 	}
 
-	runConfig := runner.WithStateDelta(nil)
 	events := subRunner.Run(ctx, "subagent-user", teammate.Name+"-session", userMsg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
-	}, runConfig)
+	})
 
 	var responseBuilder strings.Builder
 	for ev, err := range events {

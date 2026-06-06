@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // SystemPromptBuilder dynamic prompt builder (s10).
@@ -289,7 +291,54 @@ func (b *SystemPromptBuilder) BuildWithPrompt(userPrompt string) string {
 	// Update stored hashes for the next turn
 	b.sectionHashes = newHashes
 
-	return sb.String()
+	return sanitizeADKStatePlaceholders(sb.String())
+}
+
+var adkStatePlaceholderPattern = regexp.MustCompile(`{+[^{}]*}+`)
+
+func sanitizeADKStatePlaceholders(prompt string) string {
+	return adkStatePlaceholderPattern.ReplaceAllStringFunc(prompt, func(match string) string {
+		name := strings.TrimSpace(strings.Trim(match, "{}"))
+		if strings.HasSuffix(name, "?") {
+			return match
+		}
+		if !isADKStatePlaceholderName(name) {
+			return match
+		}
+		return "{" + name + " /* literal */}"
+	})
+}
+
+func isADKStatePlaceholderName(name string) bool {
+	parts := strings.Split(name, ":")
+	if len(parts) == 1 {
+		return isGoIdentifier(parts[0])
+	}
+	if len(parts) == 2 {
+		switch parts[0] {
+		case "app", "user", "temp":
+			return isGoIdentifier(parts[1])
+		}
+	}
+	return false
+}
+
+func isGoIdentifier(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		if i == 0 {
+			if !unicode.IsLetter(r) && r != '_' {
+				return false
+			}
+			continue
+		}
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' {
+			return false
+		}
+	}
+	return true
 }
 
 // getUniqueSkillDirs returns a deduplicated list of directories where custom developer skills live.

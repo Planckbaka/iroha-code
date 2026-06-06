@@ -56,29 +56,7 @@ func TestChatComponentHandleInputReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestChatComponentSetStreamedText(t *testing.T) {
-	c := NewChatComponent(nil)
-	c.SetStreamedText("hello ")
-	c.SetStreamedText("world")
-	if c.streamedText != "hello world" {
-		t.Errorf("expected 'hello world', got %q", c.streamedText)
-	}
-	if c.state != stateStreaming {
-		t.Error("state should be streaming after SetStreamedText")
-	}
-}
-
-func TestChatComponentResetStream(t *testing.T) {
-	c := NewChatComponent(nil)
-	c.SetStreamedText("text")
-	c.ResetStream()
-	if c.streamedText != "" {
-		t.Error("streamedText should be empty after reset")
-	}
-	if c.renderedText != "" {
-		t.Error("renderedText should be empty after reset")
-	}
-}
+// SetStreamedText and ResetStream removed — streaming state is managed by App
 
 func TestChatComponentRenderEmpty(t *testing.T) {
 	c := NewChatComponent(nil)
@@ -201,8 +179,11 @@ func TestConfirmComponentEditMode(t *testing.T) {
 	if !c.editActive {
 		t.Error("should enter edit mode")
 	}
-	if c.EditBuffer() != "ls -la" {
-		t.Errorf("edit buffer should be 'ls -la', got %q", c.EditBuffer())
+	if string(c.editBuffer) != "ls -la" {
+		t.Errorf("edit buffer should be 'ls -la', got %q", string(c.editBuffer))
+	}
+	if rendered := strings.Join(c.Render(80), "\n"); !strings.Contains(rendered, "ls -la") {
+		t.Errorf("edit mode should show the editable value, got %q", rendered)
 	}
 }
 
@@ -213,14 +194,14 @@ func TestConfirmComponentEditKeys(t *testing.T) {
 
 	// Type a character
 	c.HandleInput(Key{Type: KeyRune, Rune: 'X'})
-	if c.EditBuffer() != "testX" {
-		t.Errorf("expected 'testX', got %q", c.EditBuffer())
+	if string(c.editBuffer) != "testX" {
+		t.Errorf("expected 'testX', got %q", string(c.editBuffer))
 	}
 
 	// Backspace
 	c.HandleInput(Key{Type: KeyBackspace})
-	if c.EditBuffer() != "test" {
-		t.Errorf("expected 'test', got %q", c.EditBuffer())
+	if string(c.editBuffer) != "test" {
+		t.Errorf("expected 'test', got %q", string(c.editBuffer))
 	}
 
 	// Escape
@@ -273,8 +254,8 @@ func TestInputComponentTyping(t *testing.T) {
 	ic := NewInputComponent(focus, nil)
 	ic.HandleInput(Key{Type: KeyRune, Rune: 'h'})
 	ic.HandleInput(Key{Type: KeyRune, Rune: 'i'})
-	if ic.Buffer() != "hi" {
-		t.Errorf("expected 'hi', got %q", ic.Buffer())
+	if string(ic.focus.Buffer) != "hi" {
+		t.Errorf("expected 'hi', got %q", string(ic.focus.Buffer))
 	}
 }
 
@@ -284,8 +265,8 @@ func TestInputComponentBackspace(t *testing.T) {
 	ic.HandleInput(Key{Type: KeyRune, Rune: 'a'})
 	ic.HandleInput(Key{Type: KeyRune, Rune: 'b'})
 	ic.HandleInput(Key{Type: KeyBackspace})
-	if ic.Buffer() != "a" {
-		t.Errorf("expected 'a', got %q", ic.Buffer())
+	if string(ic.focus.Buffer) != "a" {
+		t.Errorf("expected 'a', got %q", string(ic.focus.Buffer))
 	}
 }
 
@@ -328,7 +309,7 @@ func TestInputComponentSubmitEmpty(t *testing.T) {
 	}
 }
 
-func TestInputComponentSlashCommand(t *testing.T) {
+func TestInputComponentSlashMenuItem(t *testing.T) {
 	focus := &FocusModel{Owner: FocusPrompt}
 	ic := NewInputComponent(focus, nil)
 	var captured string
@@ -360,11 +341,32 @@ func TestInputComponentRender(t *testing.T) {
 	}
 }
 
+func TestInputComponentRenderWrapsLongInput(t *testing.T) {
+	focus := &FocusModel{Owner: FocusPrompt, Buffer: []rune("abcdefghijklmnop")}
+	ic := NewInputComponent(focus, nil)
+	lines := ic.Render(10)
+
+	if len(lines) < 2 {
+		t.Fatalf("expected wrapped input, got %q", lines)
+	}
+	for _, line := range lines {
+		if width := visualWidth(line); width > 10 {
+			t.Fatalf("input line width = %d, want <= 10: %q", width, line)
+		}
+	}
+	if !strings.HasPrefix(lines[0], "┃ ") {
+		t.Fatalf("first line should keep prompt prefix, got %q", lines[0])
+	}
+	if strings.HasPrefix(lines[1], "┃ ") {
+		t.Fatalf("continuation line should not repeat prompt glyph, got %q", lines[1])
+	}
+}
+
 func TestInputComponentClear(t *testing.T) {
 	focus := &FocusModel{Owner: FocusPrompt, Buffer: []rune("test"), CursorIndex: 4}
 	ic := NewInputComponent(focus, nil)
 	ic.Clear()
-	if ic.Buffer() != "" {
+	if string(ic.focus.Buffer) != "" {
 		t.Error("buffer should be empty after clear")
 	}
 	if focus.CursorIndex != 0 {
@@ -384,7 +386,7 @@ func TestInputComponentNotFocused(t *testing.T) {
 // --- SlashMenuComponent ---
 
 func TestSlashMenuComponentUpdate(t *testing.T) {
-	sm := NewSlashMenuComponent([]SlashCommand{
+	sm := NewSlashMenuComponent([]SlashMenuItem{
 		{Command: "/help", Description: "Show help"},
 		{Command: "/exit", Description: "Exit"},
 		{Command: "/stats", Description: "Statistics"},
@@ -402,7 +404,7 @@ func TestSlashMenuComponentUpdate(t *testing.T) {
 }
 
 func TestSlashMenuComponentNoMatch(t *testing.T) {
-	sm := NewSlashMenuComponent([]SlashCommand{
+	sm := NewSlashMenuComponent([]SlashMenuItem{
 		{Command: "/help", Description: "Show help"},
 	})
 	sm.Update("/zzz")
@@ -412,7 +414,7 @@ func TestSlashMenuComponentNoMatch(t *testing.T) {
 }
 
 func TestSlashMenuComponentNonSlashInput(t *testing.T) {
-	sm := NewSlashMenuComponent([]SlashCommand{
+	sm := NewSlashMenuComponent([]SlashMenuItem{
 		{Command: "/help", Description: "Show help"},
 	})
 	sm.Update("hello")
@@ -422,7 +424,7 @@ func TestSlashMenuComponentNonSlashInput(t *testing.T) {
 }
 
 func TestSlashMenuComponentNavigation(t *testing.T) {
-	sm := NewSlashMenuComponent([]SlashCommand{
+	sm := NewSlashMenuComponent([]SlashMenuItem{
 		{Command: "/help", Description: "Show help"},
 		{Command: "/exit", Description: "Exit"},
 	})
@@ -438,7 +440,7 @@ func TestSlashMenuComponentNavigation(t *testing.T) {
 }
 
 func TestSlashMenuComponentClose(t *testing.T) {
-	sm := NewSlashMenuComponent([]SlashCommand{
+	sm := NewSlashMenuComponent([]SlashMenuItem{
 		{Command: "/help", Description: "Show help"},
 	})
 	sm.Update("/")
@@ -449,7 +451,7 @@ func TestSlashMenuComponentClose(t *testing.T) {
 }
 
 func TestSlashMenuComponentRender(t *testing.T) {
-	sm := NewSlashMenuComponent([]SlashCommand{
+	sm := NewSlashMenuComponent([]SlashMenuItem{
 		{Command: "/help", Description: "Show help"},
 		{Command: "/exit", Description: "Exit"},
 	})
@@ -486,7 +488,7 @@ func TestStatusBarComponentAlwaysActive(t *testing.T) {
 
 func TestStatusBarComponentRender(t *testing.T) {
 	sb := NewStatusBarComponent()
-	sb.SetMode("default")
+	sb.mode = "default"
 	sb.SetTokenUsage(1000, 0.05)
 	lines := sb.Render(80)
 	if len(lines) != 1 {
@@ -499,7 +501,7 @@ func TestStatusBarComponentRender(t *testing.T) {
 
 func TestStatusBarComponentSetGoalMode(t *testing.T) {
 	sb := NewStatusBarComponent()
-	sb.SetMode("default")
+	sb.mode = "default"
 	sb.SetGoalMode(true, "my objective")
 	lines := sb.Render(80)
 	joined := strings.Join(lines, "")
@@ -684,6 +686,26 @@ func TestNewApp(t *testing.T) {
 	if app.state != statePermissionSelect {
 		t.Error("default state should be permissionSelect")
 	}
+	if app.screens.screenType != "permission" {
+		t.Errorf("permission screen should be initialized, got %q", app.screens.screenType)
+	}
+}
+
+func TestAppNewSessionReplacesHistoryEverywhere(t *testing.T) {
+	app := NewApp(nil, "old-session", false, "")
+	app.history.Add(HistoryEntry{Role: RoleUser, Content: "old conversation"})
+
+	app.handleNewSession()
+
+	if app.history.Len() != 0 {
+		t.Fatal("new session should clear existing history")
+	}
+	if app.chat.history != app.history {
+		t.Fatal("chat component should reference the replacement history store")
+	}
+	if app.sessionID == "old-session" || app.sessionID == "" {
+		t.Fatalf("new session should receive a fresh id, got %q", app.sessionID)
+	}
 }
 
 func TestAppWidth(t *testing.T) {
@@ -730,6 +752,41 @@ func TestAppHandleCtrlCExit(t *testing.T) {
 	shouldExit := app.handleKey(Key{Type: KeyCtrlC})
 	if !shouldExit {
 		t.Error("Ctrl+C in permission select should exit")
+	}
+}
+
+func TestAppCtrlCCreatesFreshExecutionContext(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = stateThinking
+	oldCtx := app.ctx
+
+	if shouldExit := app.handleKey(Key{Type: KeyCtrlC}); shouldExit {
+		t.Fatal("Ctrl+C during execution should cancel the round, not exit the TUI")
+	}
+	if oldCtx.Err() == nil {
+		t.Fatal("Ctrl+C should cancel the active execution context")
+	}
+	if app.ctx == oldCtx || app.ctx.Err() != nil {
+		t.Fatal("Ctrl+C should prepare a fresh context for the next prompt")
+	}
+}
+
+func TestAppCursorTracksWrappedInput(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+	app.width = 10
+	app.height = 20
+	app.focus.Take(FocusPrompt)
+	app.focus.Buffer = []rune("abcdefghijklmnop")
+	app.focus.CursorIndex = len(app.focus.Buffer)
+
+	lines := app.Render()
+
+	if app.cursorRow < 0 || app.cursorRow >= len(lines) {
+		t.Fatalf("cursor row %d outside rendered frame of %d lines", app.cursorRow, len(lines))
+	}
+	if app.cursorCol < 1 || app.cursorCol > app.width {
+		t.Fatalf("cursor col %d outside terminal width %d", app.cursorCol, app.width)
 	}
 }
 

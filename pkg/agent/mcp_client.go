@@ -32,6 +32,7 @@ type MCPServerConfig struct {
 	Command string   `json:"command"`
 	Args    []string `json:"args,omitempty"`
 	Env     []string `json:"env,omitempty"`
+	URL     string   `json:"url,omitempty"` // HTTP transport URL
 }
 
 // PluginsConfig represents the serialized registry inside plugins.json.

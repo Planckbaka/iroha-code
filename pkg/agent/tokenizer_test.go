@@ -1,9 +1,20 @@
 package agent
 
 import (
+	"context"
+	"os"
 	"strings"
 	"testing"
 )
+
+func contextWithWorkdir(t *testing.T) context.Context {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get cwd: %v", err)
+	}
+	return context.WithValue(context.Background(), WorkdirKey, wd)
+}
 
 func TestTokenizeCommand_Simple(t *testing.T) {
 	tokens, err := tokenizeCommand("ls -la /tmp")
@@ -91,6 +102,26 @@ func TestTokenizeCommand_Pipe(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "pipe") {
 		t.Errorf("expected pipe error, got: %v", err)
+	}
+}
+
+func TestCheckShellCommandSandbox_AllowsFindHeadPipeline(t *testing.T) {
+	err := checkShellCommandSandbox(
+		contextWithWorkdir(t),
+		"find . -maxdepth 3 -not -path '*/.git/*' | head -200",
+	)
+	if err != nil {
+		t.Fatalf("expected safe read-only pipeline, got: %v", err)
+	}
+}
+
+func TestCheckShellCommandSandbox_BlocksNonLimiterPipeline(t *testing.T) {
+	err := checkShellCommandSandbox(contextWithWorkdir(t), "find . -maxdepth 3 | grep foo")
+	if err == nil {
+		t.Fatal("expected non-limiter pipeline to be blocked")
+	}
+	if !strings.Contains(err.Error(), "pipe") {
+		t.Fatalf("expected pipe block, got: %v", err)
 	}
 }
 

@@ -6,94 +6,98 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// Cyber-Holographic Color Palette (Iroha Code Theme)
+// Terminal agent palette. Keep core chrome quiet and reserve strong color for
+// state changes that matter: active work, success, warning, and failure.
 var (
-	ColorPrimary   = lipgloss.Color("#22D3EE") // Electric Cyan/Turquoise
-	ColorSecondary = lipgloss.Color("#EC4899") // Neon Hot Pink
-	ColorSuccess   = lipgloss.Color("#10B981") // Cyber Emerald
-	ColorWarning   = lipgloss.Color("#F59E0B") // Amber
-	ColorDanger    = lipgloss.Color("#E11D48") // Rose/Magenta
-	ColorTextMuted = lipgloss.Color("#64748B") // Slate
+	ColorPrimary   = lipgloss.Color("#7DD3FC")
+	ColorSecondary = lipgloss.Color("#A1A1AA")
+	ColorSuccess   = lipgloss.Color("#22C55E")
+	ColorWarning   = lipgloss.Color("#F59E0B")
+	ColorDanger    = lipgloss.Color("#F43F5E")
+	ColorTextMuted = lipgloss.Color("#71717A")
+	ColorText      = lipgloss.Color("#E4E4E7")
+	ColorBorder    = lipgloss.Color("#3F3F46")
+	ColorPanel     = lipgloss.Color("#18181B")
 )
+
+// Shared card styles — hoisted from repeated inline declarations across view.go.
+var (
+	// cardStyleCompact is the standard padded card used by most dashboard renderers.
+	cardStyleCompact = lipgloss.NewStyle().Padding(1, 2).MarginTop(1).MarginBottom(1)
+
+	// cardStyleSlim is a narrower card variant with less horizontal padding.
+	cardStyleSlim = lipgloss.NewStyle().Padding(0, 1).MarginTop(1).MarginBottom(1)
+
+	// cardStyleFlush is a borderless, zero-padding card used by the help overlay.
+	cardStyleFlush = lipgloss.NewStyle().Padding(0, 0).MarginTop(1).MarginBottom(1)
+
+	// cardStyleBordered is a rounded-border card used by the background dashboard.
+	cardStyleBordered = lipgloss.NewStyle().
+		Padding(0, 1).MarginTop(1).MarginBottom(1).
+		Border(lipgloss.RoundedBorder()).BorderForeground(ColorPrimary)
+)
+
+// sanitizedWidth returns a safe positive width, defaulting to 80 when the
+// provided value is zero or negative.
+func sanitizedWidth(w int) int {
+	if w <= 0 {
+		return 80
+	}
+	return w
+}
 
 // Lipgloss Styles
 var (
 	StylePrompt = lipgloss.NewStyle().
-			Foreground(ColorPrimary).
+			Foreground(ColorText).
 			Bold(true)
 
 	StyleWelcome = lipgloss.NewStyle().
-			Foreground(ColorSecondary).
-			Padding(1, 2).
+			Foreground(ColorText).
+			Padding(0, 2).
 			MarginTop(1).
 			MarginBottom(1)
 
 	StyleUserMsg = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#F4F4F5")).
+			Foreground(ColorText).
 			Bold(true).
-			MarginLeft(1).
 			MarginTop(1)
 
 	StyleAgentMsg = lipgloss.NewStyle().
-			MarginLeft(1).
+			Foreground(ColorText).
 			MarginTop(1)
 
-	StyleAgentHeader = lipgloss.NewStyle().
-				Foreground(ColorPrimary).
-				Bold(true).
-				MarginTop(1).
-				MarginLeft(1)
 
-	StyleToolHeader = lipgloss.NewStyle().
-			Foreground(ColorWarning).
-			Bold(true).
-			MarginLeft(1).
-			MarginTop(1)
 
 	StyleToolSuccess = lipgloss.NewStyle().
 				Foreground(ColorSuccess).
-				Bold(true).
-				MarginLeft(1)
+				Bold(true)
 
 	StyleToolError = lipgloss.NewStyle().
 			Foreground(ColorDanger).
-			Bold(true).
-			MarginLeft(1)
+			Bold(true)
 
-	StyleThinking = lipgloss.NewStyle().
-			Foreground(ColorSecondary). // Secondary gray spinner is subtle
-			Italic(true)
 
-	StyleConfirmCard = lipgloss.NewStyle().
-				Padding(0, 0).
-				MarginTop(1).
-				MarginBottom(1)
 
 	StyleKeyHelp = lipgloss.NewStyle().
 			Foreground(ColorTextMuted).
 			Italic(true)
 
 	StyleKeyActive = lipgloss.NewStyle().
-			Foreground(ColorPrimary).
+			Foreground(ColorText).
 			Bold(true)
 
 	StyleStatusBar = lipgloss.NewStyle().
-			Background(lipgloss.Color("#1E1B4B")).
-			Foreground(lipgloss.Color("#22D3EE")).
-			Bold(true)
+			Foreground(ColorTextMuted)
 
-	StyleDiffAdd = lipgloss.NewStyle().
-			Foreground(ColorSuccess)
 
-	StyleDiffDel = lipgloss.NewStyle().
-			Foreground(ColorDanger)
 
 	// StyleSpinner styles the braille spinner frame (hoisted from per-frame
 	// allocation in the render loop).
 	StyleSpinner = lipgloss.NewStyle().Foreground(ColorSecondary)
 
 	// StyleThinkingText styles the "thinking..." label during stateThinking.
-	StyleThinkingText = lipgloss.NewStyle().Foreground(ColorPrimary).Italic(true)
+	StyleThinkingText = lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true)
 )
 
 // spinnerFrames holds the braille animation frames shared across render states.

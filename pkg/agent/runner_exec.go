@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
-	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -19,6 +18,7 @@ import (
 func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt string, onEvent func(*session.Event), onError func(error), onDone func()) {
 	cr.deps.ToolCircuitBreaker.Reset()
 	cr.deps.Logger.SetSessionID(sessionID)
+	initiallyDirtyPaths := GitDirtyPathSet()
 
 	runID := uuid.NewString()
 	var runSequence atomic.Uint64
@@ -136,10 +136,9 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 			},
 		}
 
-		runConfig := runner.WithStateDelta(nil)
 		events := cr.adkRunner.Run(ctx, userID, sessionID, userMsg, agent.RunConfig{
 			StreamingMode: agent.StreamingModeSSE,
-		}, runConfig)
+		})
 
 		var responseTextLen int
 		for ev, err := range events {
@@ -159,7 +158,6 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 				return
 			}
 			if ev != nil {
-				emitRunEvent("run.event_received", map[string]any{"has_content": ev.Content != nil})
 				// Track response length for HookAgentResponse
 				if ev.Content != nil {
 					for _, p := range ev.Content.Parts {
@@ -178,17 +176,18 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 			SessionID:      sessionID,
 		})
 
+		editedPaths := FilterInitiallyDirtyPaths(pendingEditPaths(), initiallyDirtyPaths)
 		commitPendingEdits()
 
 		LogInfo(CatSystem, "runner_complete", "Agent execution completed successfully", map[string]any{
 			"session_id": sessionID,
 			"run_id":     runID,
 		})
-		emitTerminalRunEvent("run.completed", map[string]any{"response_length": responseTextLen})
 
-		// Trigger Aider-style Git Auto-Commit if repository has staged/unstaged changes
-		if hasChanges, err := GitHasChanges(); err == nil && hasChanges {
-			if diffStr, err := GitGetStagedDiff(); err == nil && strings.TrimSpace(diffStr) != "" {
+		// Auto-commit only files modified through this turn's edit tools. User
+		// changes elsewhere in the worktree must never be staged or committed.
+		if len(editedPaths) > 0 {
+			if diffStr, err := GitStageAndDiffPaths(editedPaths); err == nil && strings.TrimSpace(diffStr) != "" {
 				if len(diffStr) > 8000 {
 					diffStr = diffStr[:8000]
 				}
@@ -229,7 +228,7 @@ Requirements:
 				}
 
 				fullCommitMsg := fmt.Sprintf("[iroha] %s", commitMsg)
-				if commitErr := GitCommit(fullCommitMsg); commitErr == nil {
+				if commitErr := GitCommitPaths(fullCommitMsg, editedPaths); commitErr == nil {
 					LogInfo(CatSystem, "git_auto_commit", fmt.Sprintf("Aider-style Git auto-commit completed: %s", fullCommitMsg), map[string]any{
 						"session_id": sessionID,
 						"msg":        fullCommitMsg,
@@ -247,6 +246,7 @@ Requirements:
 			SessionID: sessionID,
 		})
 
+		emitTerminalRunEvent("run.completed", map[string]any{"response_length": responseTextLen})
 		onDone()
 	}()
 }

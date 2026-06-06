@@ -13,7 +13,7 @@ type InputComponent struct {
 	slashMenu *SlashMenuComponent
 
 	// Callbacks (wired by App in Phase 3)
-	OnSubmit   func(prompt string)  // triggers agent execution
+	OnSubmit   func(prompt string)   // triggers agent execution
 	OnSlashCmd func(cmd string) bool // handles slash commands
 }
 
@@ -130,7 +130,22 @@ func (ic *InputComponent) OnStateChange(oldState, newState TuiState) {
 func (ic *InputComponent) Render(width int) []string {
 	promptPrefix := "┃ "
 	inputVal := string(ic.focus.Buffer)
-	return strings.Split(promptPrefix+inputVal, "\n")
+	prefixWidth := visualWidth(promptPrefix)
+	wrapped := WrapInput(inputVal, prefixWidth, width)
+	if len(wrapped) == 0 {
+		wrapped = []string{""}
+	}
+
+	lines := make([]string, len(wrapped))
+	continuationPrefix := strings.Repeat(" ", prefixWidth)
+	for i, line := range wrapped {
+		if i == 0 {
+			lines[i] = promptPrefix + line
+			continue
+		}
+		lines[i] = continuationPrefix + line
+	}
+	return lines
 }
 
 // SetSlashMenu sets the slash menu component reference.
@@ -144,11 +159,6 @@ func (ic *InputComponent) updateSlashMenu() {
 	}
 	input := string(ic.focus.Buffer)
 	ic.slashMenu.Update(input)
-}
-
-// Buffer returns the current input buffer content.
-func (ic *InputComponent) Buffer() string {
-	return string(ic.focus.Buffer)
 }
 
 // Clear resets the input buffer.

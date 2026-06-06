@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"iroha/pkg/agent"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // ChatComponent renders the conversation history, streaming text, thinking
@@ -31,6 +33,11 @@ func NewChatComponent(history *HistoryStore) *ChatComponent {
 	}
 }
 
+// SetHistory replaces the conversation timeline used by the component.
+func (c *ChatComponent) SetHistory(history *HistoryStore) {
+	c.history = history
+}
+
 // Active returns true when the chat is the primary content area.
 func (c *ChatComponent) Active(state TuiState) bool {
 	// Chat is always visible in these states
@@ -52,12 +59,6 @@ func (c *ChatComponent) OnStateChange(oldState, newState TuiState) {
 	// No special reaction needed — state is checked during Render
 }
 
-// SetStreamedText appends streaming text and updates state.
-func (c *ChatComponent) SetStreamedText(text string) {
-	c.streamedText += text
-	c.state = stateStreaming
-}
-
 // ResetStream clears the current stream buffer.
 func (c *ChatComponent) ResetStream() {
 	c.streamedText = ""
@@ -75,11 +76,75 @@ func (c *ChatComponent) SetActiveTool(status agent.ToolStatus) {
 	}
 }
 
+// RenderTail produces only the transient chat area: welcome, current stream,
+// thinking/tool progress, or confirmation UI. App owns viewport composition.
+func (c *ChatComponent) RenderTail(state TuiState, width int, streamText string, streamRendered string, welcomeLines []string, confirmLines []string) []string {
+	width = sanitizedWidth(width)
+
+	var lines []string
+	if len(welcomeLines) > 0 && state == statePrompt {
+		lines = append(lines, welcomeLines...)
+	}
+
+	switch state {
+	case stateThinking:
+		lines = append(lines, c.renderThinking(width)...)
+	case stateStreaming:
+		fullText := streamRendered
+		if streamText != "" {
+			fullText = RenderMarkdownWithWidth(streamText, max(1, width-2))
+		}
+		if fullText != "" {
+			rendered := StyleAgentMsg.Render(fullText)
+			lines = append(lines, "")
+			lines = append(lines, strings.Split(rendered, "\n")...)
+		}
+		lines = append(lines, c.renderToolProgress(width)...)
+	case stateConfirming:
+		lines = append(lines, confirmLines...)
+	}
+
+	return lines
+}
+
+func (c *ChatComponent) renderThinking(width int) []string {
+	if c.activeTool.Running {
+		return c.renderToolProgress(width)
+	}
+	return []string{"", "  " + currentSpinnerFrame() + " " + StyleThinkingText.Render("thinking")}
+}
+
+func (c *ChatComponent) renderToolProgress(width int) []string {
+	if !c.activeTool.Running {
+		return nil
+	}
+
+	color, label, _ := getToolCategoryTheme(c.activeTool.Name)
+	activity := FormatToolActivity(c.activeTool.Name, c.activeTool.Args)
+	labelStyled := lipgloss.NewStyle().Foreground(color).Render("[" + label + "]")
+	textStyled := lipgloss.NewStyle().Foreground(ColorTextMuted).Render(strings.ToLower(activity))
+
+	lines := []string{"", "  " + currentSpinnerFrame() + " " + labelStyled + " " + textStyled}
+	if len(c.activeTool.StreamLines) == 0 {
+		return lines
+	}
+
+	cmdDisplay := ""
+	if argMap, ok := c.activeTool.Args.(map[string]any); ok {
+		if cmd, ok := argMap["command"].(string); ok {
+			cmdDisplay = cmd
+		}
+	}
+	streamArea := RenderShellStreamArea(c.activeTool.StreamLines, cmdDisplay, width)
+	if streamArea != "" {
+		lines = append(lines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
+	}
+	return lines
+}
+
 // Render produces the chat area output.
 func (c *ChatComponent) Render(width int) []string {
-	if width <= 0 {
-		width = 80
-	}
+	width = sanitizedWidth(width)
 
 	var lines []string
 
@@ -102,7 +167,7 @@ func (c *ChatComponent) Render(width int) []string {
 	case stateStreaming:
 		fullText := c.renderedText
 		if c.streamedText != "" {
-			fullText = RenderMarkdown(c.streamedText)
+			fullText = RenderMarkdownWithWidth(c.streamedText, max(1, width-2))
 		}
 		if fullText != "" {
 			rendered := StyleAgentMsg.Render(fullText)

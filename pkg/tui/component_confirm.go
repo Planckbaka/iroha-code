@@ -121,6 +121,9 @@ func (cc *ConfirmComponent) Render(width int) []string {
 		var lines []string
 		lines = append(lines, "", StyleKeyActive.Render("Editing Tool Arguments"))
 		lines = append(lines, "  Press [Enter] to run with modified arguments. Press [Esc] to cancel.", "")
+		for _, line := range strings.Split(string(cc.editBuffer), "\n") {
+			lines = append(lines, "  "+StylePrompt.Render(line))
+		}
 		return lines
 	}
 
@@ -204,10 +207,5 @@ func (cc *ConfirmComponent) getEditableValue() string {
 		}
 	}
 	return ""
-}
-
-// EditBuffer returns the current edit buffer content.
-func (cc *ConfirmComponent) EditBuffer() string {
-	return string(cc.editBuffer)
 }
 

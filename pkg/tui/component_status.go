@@ -13,15 +13,15 @@ import (
 // StatusBarComponent renders mode, tokens, cost, and active tool info.
 type StatusBarComponent struct {
 	BaseComponent
-	state            TuiState
-	mode             string
-	totalTokens      int
-	sessionCost      float64
-	statusText       string
-	activeTool       agent.ToolStatus
-	roundStartTime   time.Time
-	isGoalMode       bool
-	goalText         string
+	state          TuiState
+	mode           string
+	totalTokens    int
+	sessionCost    float64
+	statusText     string
+	activeTool     agent.ToolStatus
+	roundStartTime time.Time
+	isGoalMode     bool
+	goalText       string
 }
 
 // NewStatusBarComponent creates a StatusBarComponent.
@@ -42,11 +42,6 @@ func (sb *StatusBarComponent) HandleInput(key Key) bool {
 // OnStateChange reacts to state transitions.
 func (sb *StatusBarComponent) OnStateChange(oldState, newState TuiState) {
 	sb.state = newState
-}
-
-// SetMode updates the permission mode string.
-func (sb *StatusBarComponent) SetMode(mode string) {
-	sb.mode = mode
 }
 
 // SetTokenUsage updates token count and cost.
@@ -78,29 +73,31 @@ func (sb *StatusBarComponent) SetStatusText(text string) {
 
 // Render produces the status bar output.
 func (sb *StatusBarComponent) Render(width int) []string {
-	if width <= 0 {
-		width = 80
-	}
+	width = sanitizedWidth(width)
 	modeStr := strings.ToLower(string(agent.GlobalPermissionManager.GetMode()))
 	if modeStr == "" {
 		modeStr = "-"
 	}
 
+	stateLabel := "ready"
 	var left string
 	if sb.statusText != "" && (sb.state == stateThinking || sb.state == stateStreaming) {
-		left = fmt.Sprintf("  [thinking] %s", sb.statusText)
+		stateLabel = "thinking"
+		left = fmt.Sprintf(" %s  %s", stateLabel, sb.statusText)
 	} else if sb.activeTool.Running {
+		stateLabel = "running"
 		dur := time.Since(sb.roundStartTime).Round(time.Millisecond)
 		activity := FormatToolActivity(sb.activeTool.Name, sb.activeTool.Args)
 		if len(activity) > 40 {
 			activity = activity[:37] + "..."
 		}
-		left = fmt.Sprintf("  [tool] %s (%v)", activity, dur)
+		left = fmt.Sprintf(" %s  %s  %v", stateLabel, activity, dur)
 	} else if sb.state == stateThinking || sb.state == stateStreaming {
+		stateLabel = "thinking"
 		dur := time.Since(sb.roundStartTime).Round(time.Second)
-		left = fmt.Sprintf("  [thinking] thinking... (%v)", dur)
+		left = fmt.Sprintf(" %s  %v", stateLabel, dur)
 	} else {
-		left = fmt.Sprintf("  mode:%s", modeStr)
+		left = fmt.Sprintf(" %s", stateLabel)
 	}
 
 	if sb.isGoalMode && sb.goalText != "" {
@@ -108,7 +105,7 @@ func (sb *StatusBarComponent) Render(width int) []string {
 		if len(goalText) > 20 {
 			goalText = goalText[:17] + "..."
 		}
-		left = fmt.Sprintf("  🎯 [goal] %s | %s", goalText, strings.TrimPrefix(left, "  "))
+		left = fmt.Sprintf(" goal %s | %s", goalText, strings.TrimSpace(left))
 	}
 
 	var tokenStr string
@@ -133,7 +130,7 @@ func (sb *StatusBarComponent) Render(width int) []string {
 	} else {
 		tokenStr = "-"
 	}
-	right := fmt.Sprintf("[%s] %s  ", modeStr, tokenStr)
+	right := fmt.Sprintf("mode:%s  tokens:%s ", modeStr, tokenStr)
 
 	leftWidth := lipgloss.Width(left)
 	rightWidth := lipgloss.Width(right)

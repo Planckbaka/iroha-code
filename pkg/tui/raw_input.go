@@ -36,6 +36,8 @@ const (
 	KeyCtrlY
 	KeyPgUp
 	KeyPgDown
+	KeyWheelUp
+	KeyWheelDown
 )
 
 // ReadRawKeys runs an input scanning loop on os.Stdin in raw terminal mode.
@@ -123,6 +125,15 @@ func parseBytes(b []byte) []Key {
 				}
 				// Arrow keys, Shift+Tab, Page Up/Down
 				if b[i+1] == '[' {
+					if i+2 < len(b) && b[i+2] == '<' {
+						if key, next, ok := parseSGRMouse(b, i); ok {
+							if key.Type == KeyWheelUp || key.Type == KeyWheelDown {
+								keys = append(keys, key)
+							}
+							i = next
+							continue
+						}
+					}
 					if i+2 < len(b) {
 						switch b[i+2] {
 						case 'A': // Up
@@ -175,6 +186,34 @@ func parseBytes(b []byte) []Key {
 	}
 
 	return keys
+}
+
+func parseSGRMouse(b []byte, start int) (Key, int, bool) {
+	end := start + 3
+	for end < len(b) && b[end] != 'M' && b[end] != 'm' {
+		end++
+	}
+	if end >= len(b) {
+		return Key{}, start, false
+	}
+
+	button := 0
+	for i := start + 3; i < end && b[i] != ';'; i++ {
+		if b[i] < '0' || b[i] > '9' {
+			return Key{}, end + 1, true
+		}
+		button = button*10 + int(b[i]-'0')
+	}
+
+	baseButton := button &^ 28 // strip shift/meta/ctrl modifier bits
+	switch baseButton {
+	case 64:
+		return Key{Type: KeyWheelUp, Bytes: b[start : end+1]}, end + 1, true
+	case 65:
+		return Key{Type: KeyWheelDown, Bytes: b[start : end+1]}, end + 1, true
+	default:
+		return Key{Type: KeyEsc, Bytes: b[start : end+1]}, end + 1, true
+	}
 }
 
 func decodeRune(b []byte) (rune, int) {

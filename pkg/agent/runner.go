@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"iroha/pkg/llm"
 
@@ -128,7 +129,69 @@ func (d *DynamicLLMDelegator) GenerateContent(ctx context.Context, req *model.LL
 	// surfaces from the provider BEFORE any content streams, so it is safe to
 	// react by force-compacting the window and retrying once. Mid-stream errors
 	// are NOT retried here — replaying would duplicate already-emitted text.
-	return d.generateWithContextRecovery(ctx, req, stream, m)
+	return d.generateWithRetryRecovery(ctx, req, stream, m)
+}
+
+// generateWithRetryRecovery wraps the underlying model's response stream and
+// retries safe pre-output failures. Context-length errors still get one
+// force-compaction attempt; transient direct-HTTP errors use the shared API
+// retry budget and Claude Code-like user-visible retry notices. Any error after
+// output is passed through to avoid duplicating streamed text or tool calls.
+func (d *DynamicLLMDelegator) generateWithRetryRecovery(ctx context.Context, req *model.LLMRequest, stream bool, m model.LLM) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		retryableDirectHTTP := false
+		if _, ok := m.(llm.DirectHTTPAdapter); ok {
+			retryableDirectHTTP = true
+		}
+		if !retryableDirectHTTP {
+			for resp, err := range d.generateWithContextRecovery(ctx, req, stream, m) {
+				if !yield(resp, err) {
+					return
+				}
+			}
+			return
+		}
+
+		maxRetries := llm.MaxRetries()
+		for attempt := 0; ; attempt++ {
+			emitted := false
+			retried := false
+			for resp, err := range d.generateWithContextRecovery(ctx, req, stream, m) {
+				if err != nil {
+					if !emitted && llm.IsRetryableTemporaryError(err) && attempt < maxRetries {
+						if !llm.ConsumeRetry() {
+							yield(nil, llm.BudgetExhaustedError(m.Name(), err))
+							return
+						}
+						nextAttempt := attempt + 1
+						delay := llm.RetryDelay(nextAttempt, nil)
+						if !yield(llm.RetryNotice(err.Error(), nextAttempt, maxRetries, delay), nil) {
+							return
+						}
+						select {
+						case <-ctx.Done():
+							yield(nil, ctx.Err())
+							return
+						case <-time.After(delay):
+						}
+						retried = true
+						break
+					}
+					yield(resp, err)
+					return
+				}
+				if responseHasOutput(resp) {
+					emitted = true
+				}
+				if !yield(resp, nil) {
+					return
+				}
+			}
+			if !retried {
+				return
+			}
+		}
+	}
 }
 
 // generateWithContextRecovery wraps the underlying model's response stream and,
@@ -150,19 +213,29 @@ func (d *DynamicLLMDelegator) generateWithContextRecovery(ctx context.Context, r
 				}
 				return
 			}
-			if resp != nil && resp.Content != nil {
-				for _, p := range resp.Content.Parts {
-					if p != nil && p.Text != "" {
-						emitted = true
-						break
-					}
-				}
+			if responseHasOutput(resp) {
+				emitted = true
 			}
 			if !yield(resp, err) {
 				return
 			}
 		}
 	}
+}
+
+func responseHasOutput(resp *model.LLMResponse) bool {
+	if resp == nil || resp.Content == nil {
+		return false
+	}
+	for _, p := range resp.Content.Parts {
+		if p == nil {
+			continue
+		}
+		if p.Text != "" || p.FunctionCall != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // isContextLengthError reports whether an error from a provider indicates the
@@ -381,7 +454,9 @@ func NewCustomRunner(provider llm.ProviderType, modelName string, apiKey string,
 	// Trigger non-blocking automatic memory consolidation pass ("Dream Pass") in background
 	if GlobalDreamConsolidator != nil {
 		go func() {
-			_, _ = GlobalDreamConsolidator.Consolidate(GlobalMemoryManager, false)
+			if _, err := GlobalDreamConsolidator.Consolidate(GlobalMemoryManager, false); err != nil {
+				LogError(CatSession, "dream_consolidation_failed", "dream consolidation failed", err, nil)
+			}
 		}()
 	}
 
@@ -411,7 +486,7 @@ func NewCustomRunner(provider llm.ProviderType, modelName string, apiKey string,
 			PermissionManager:  GlobalPermissionManager,
 			TaskManager:        GlobalTaskManager,
 			MCPRouter:          GlobalMCPRouter,
-				Bridge:             Bridge,
+			Bridge:             Bridge,
 		},
 	}, nil
 }
@@ -472,4 +547,3 @@ func (cr *CustomRunner) GetTokenUsage() int {
 	}
 	return 0
 }
-

@@ -45,6 +45,18 @@ func commitPendingEdits() {
 	pendingEditSnapshots.snapshots = make(map[string]string)
 }
 
+// pendingEditPaths returns the files modified through Iroha's edit tools.
+func pendingEditPaths() []string {
+	pendingEditSnapshots.mu.Lock()
+	defer pendingEditSnapshots.mu.Unlock()
+
+	paths := make([]string, 0, len(pendingEditSnapshots.snapshots))
+	for path := range pendingEditSnapshots.snapshots {
+		paths = append(paths, path)
+	}
+	return paths
+}
+
 // findGoModuleRoot walks up from the current directory to find the directory containing go.mod
 func findGoModuleRoot() string {
 	cwd, err := os.Getwd()

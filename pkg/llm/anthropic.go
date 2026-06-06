@@ -34,6 +34,7 @@ type AnthropicAdapter struct {
 	systemPrompt     string
 	hooks            AdapterHooks
 	cumulativeTokens int
+	client           *http.Client
 }
 
 // SetSystemPrompt atomically replaces the active system prompt (s10 dynamic refresh).
@@ -60,6 +61,7 @@ func NewAnthropicAdapter(modelName, apiKey, baseURL, systemPrompt string, hooks 
 		baseURL:      baseURL,
 		systemPrompt: systemPrompt,
 		hooks:        hooks,
+		client:       &http.Client{Timeout: APITimeout()},
 	}
 }
 
@@ -74,6 +76,8 @@ func (a *AnthropicAdapter) CumulativeTokens() int {
 func (a *AnthropicAdapter) AddTokens(n int) {
 	a.cumulativeTokens += n
 }
+
+func (a *AnthropicAdapter) DirectHTTPAdapter() {}
 
 // Anthropic Messages API types
 
@@ -264,7 +268,7 @@ func (a *AnthropicAdapter) GenerateContent(ctx context.Context, req *model.LLMRe
 		// Send HTTP request with retry
 		var resp *http.Response
 		var lastErr error
-		maxRetries := 3
+		maxRetries := MaxRetries()
 
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			if attempt > 0 {
@@ -274,13 +278,9 @@ func (a *AnthropicAdapter) GenerateContent(ctx context.Context, req *model.LLMRe
 					return
 				}
 
-				delay := time.Duration(1<<uint(attempt-1)) * time.Second
-
-				// Override with Retry-After header value if available.
-				if resp != nil {
-					if raSec := parseRetryAfter(resp); raSec > 0 {
-						delay = time.Duration(raSec * float64(time.Second))
-					}
+				delay := RetryDelay(attempt, resp)
+				if !yield(RetryNotice(lastErr.Error(), attempt, maxRetries, delay), nil) {
+					return
 				}
 
 				select {
@@ -301,8 +301,7 @@ func (a *AnthropicAdapter) GenerateContent(ctx context.Context, req *model.LLMRe
 			httpReq.Header.Set("x-api-key", a.apiKey)
 			httpReq.Header.Set("anthropic-version", "2023-06-01")
 
-			client := &http.Client{Timeout: 30 * time.Second}
-			resp, err = client.Do(httpReq)
+			resp, err = a.client.Do(httpReq)
 			if err != nil {
 				lastErr = fmt.Errorf("anthropic API call failed: %w", err)
 				continue
@@ -311,7 +310,7 @@ func (a *AnthropicAdapter) GenerateContent(ctx context.Context, req *model.LLMRe
 			if resp.StatusCode != http.StatusOK {
 				bodyBytes, _ := io.ReadAll(resp.Body)
 				_ = resp.Body.Close()
-				isTransient := resp.StatusCode == 429 || resp.StatusCode >= 500
+				isTransient := IsRetryableHTTPStatus(resp.StatusCode)
 				lastErr = fmt.Errorf("anthropic API error %d: %s", resp.StatusCode, string(bodyBytes))
 				if isTransient {
 					continue

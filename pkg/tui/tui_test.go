@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"iroha/pkg/agent"
+
+	xansi "github.com/charmbracelet/x/ansi"
 )
 
 func TestRenderConfirmCard(t *testing.T) {
@@ -27,6 +29,43 @@ func TestRenderConfirmCard(t *testing.T) {
 	s2 := RenderConfirmCard(p, 2)
 	if !strings.Contains(s2, "A Always Allow") {
 		t.Error("RenderConfirmCard should render option A")
+	}
+}
+
+func TestRenderMarkdownCompactsShortReply(t *testing.T) {
+	raw := "你好！我是 Iroha，你的软件工程助手。有什么我可以帮你的吗？"
+	rendered := RenderMarkdownWithWidth(raw, 80)
+	lines := strings.Split(rendered, "\n")
+
+	if len(lines) > 3 {
+		t.Fatalf("short reply rendered as %d lines: %q", len(lines), rendered)
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(xansi.Strip(line)) == "" {
+			t.Fatalf("short reply should not render blank padded lines: %q", rendered)
+		}
+		if width := xansi.StringWidth(line); width > 80 {
+			t.Fatalf("rendered line width = %d, want <= 80: %q", width, line)
+		}
+	}
+}
+
+func TestRenderMarkdownUsesProvidedWidth(t *testing.T) {
+	rendered := RenderMarkdownWithWidth("alpha beta gamma delta epsilon", 14)
+	for _, line := range strings.Split(rendered, "\n") {
+		if width := xansi.StringWidth(line); width > 14 {
+			t.Fatalf("rendered line width = %d, want <= 14: %q", width, line)
+		}
+	}
+}
+
+func TestWelcomeUsesQuietAgentConsoleCopy(t *testing.T) {
+	rendered := xansi.Strip(RenderWelcomeCard(nil))
+	if !strings.Contains(rendered, "Iroha Code") {
+		t.Fatalf("welcome should identify the product, got %q", rendered)
+	}
+	if strings.Contains(rendered, "___") || strings.Contains(rendered, "Phew") {
+		t.Fatalf("welcome should avoid oversized logo/persona copy, got %q", rendered)
 	}
 }
 
@@ -65,6 +104,13 @@ func TestRenderToolErrorCard(t *testing.T) {
 	resNil := RenderToolErrorCard("test_tool", "arg1", 100*time.Millisecond, nil)
 	if !strings.Contains(resNil, "operation failed") {
 		t.Errorf("expected fallback message in output when error is nil, got:\n%s", resNil)
+	}
+}
+
+func TestToolRowsUseTextLabels(t *testing.T) {
+	success := xansi.Strip(RenderToolSuccessCard("shell_run", map[string]any{"command": "go test ./pkg/tui"}, time.Millisecond))
+	if !strings.Contains(success, "[cmd]") || strings.Contains(success, "🐚") {
+		t.Fatalf("tool success row should use quiet text labels, got %q", success)
 	}
 }
 
@@ -247,6 +293,82 @@ func TestToolStreamLinesAccumulation(t *testing.T) {
 	}
 }
 
+func TestFinalizeTurnStoresRawAgentMarkdown(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.streamedText = "**finished**"
+
+	app.finalizeTurn()
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected finalized agent history entry")
+	}
+	if app.history.entries[0].Content != "**finished**" {
+		t.Fatalf("finalized history should store raw markdown, got %q", app.history.entries[0].Content)
+	}
+}
+
+func TestFinalizeTurnStoresRenderedErrorAsSystemEntry(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.lastError = errors.New("broken")
+
+	app.finalizeTurn()
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected error history entry")
+	}
+	if app.history.entries[0].Role != RoleSystem {
+		t.Fatalf("rendered error card should bypass agent markdown rendering, got role %q", app.history.entries[0].Role)
+	}
+}
+
+func TestCtrlCSeparatesRawAgentTextFromCancelCard(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = stateStreaming
+	app.streamedText = "**partial**"
+
+	app.handleKey(Key{Type: KeyCtrlC})
+
+	if app.history.Len() != 2 {
+		t.Fatalf("expected partial response and cancel card, got %d entries", app.history.Len())
+	}
+	agentEntry := app.history.entries[0]
+	cancelEntry := app.history.entries[1]
+	if agentEntry.Role != RoleAgent || agentEntry.Content != "**partial**" {
+		t.Fatalf("partial response should remain raw agent markdown, got %#v", agentEntry)
+	}
+	if cancelEntry.Role != RoleSystem {
+		t.Fatalf("cancel card should bypass agent markdown rendering, got role %q", cancelEntry.Role)
+	}
+}
+
+func TestToolStatusStoresRawPartialAgentMarkdown(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.streamedText = "**partial**"
+
+	app.handleToolStatus(agent.ToolStatus{Name: "shell_run", Success: true})
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected partial agent history entry")
+	}
+	if app.history.entries[0].Content != "**partial**" {
+		t.Fatalf("partial history should store raw markdown, got %q", app.history.entries[0].Content)
+	}
+}
+
+func TestSlashCommandStoresRawUserInput(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+
+	app.handleRawSlashCommand("/stats")
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected slash command history entry")
+	}
+	if app.history.entries[0].Content != "/stats" {
+		t.Fatalf("slash command history should store raw input, got %q", app.history.entries[0].Content)
+	}
+}
+
 func TestAppRenderUsesTerminalHeightViewport(t *testing.T) {
 	app := NewApp(nil, "", false, "")
 	app.state = statePrompt
@@ -269,5 +391,25 @@ func TestAppRenderUsesTerminalHeightViewport(t *testing.T) {
 	scrolled := strings.Join(app.Render(), "\n")
 	if scrolled == joined {
 		t.Fatal("PageUp did not change the visible App frame")
+	}
+
+	app.HandleEvent(Key{Type: KeyWheelDown})
+	wheelDown := strings.Join(app.Render(), "\n")
+	if wheelDown == scrolled {
+		t.Fatal("mouse wheel down did not change the visible App frame")
+	}
+}
+
+func TestAppRenderClipsSlashMenuToTerminalHeight(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+	app.width = 80
+	app.height = 8
+	app.focus.Take(FocusPrompt)
+	app.slash.Update("/")
+
+	lines := app.Render()
+	if len(lines) > app.height {
+		t.Fatalf("rendered %d lines with slash menu for terminal height %d", len(lines), app.height)
 	}
 }

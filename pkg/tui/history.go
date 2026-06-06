@@ -44,7 +44,7 @@ func NewHistoryStore() *HistoryStore {
 	}
 }
 
-// Add appends a new entry to the history and resets scroll to bottom.
+// Add appends a new entry without disturbing a user reading older content.
 func (s *HistoryStore) Add(entry HistoryEntry) {
 	if entry.TS.IsZero() {
 		entry.TS = time.Now()
@@ -142,14 +142,6 @@ func (s *HistoryStore) ScrollOffset() int {
 	return s.scrollOffset
 }
 
-// Entry returns a specific entry by index.
-func (s *HistoryStore) Entry(i int) (HistoryEntry, bool) {
-	if i < 0 || i >= len(s.entries) {
-		return HistoryEntry{}, false
-	}
-	return s.entries[i], true
-}
-
 // renderEntry renders a single entry with caching.
 func (s *HistoryStore) renderEntry(idx int, entry HistoryEntry, width int) []string {
 	// Check cache
@@ -170,7 +162,7 @@ func (s *HistoryStore) renderEntry(idx int, entry HistoryEntry, width int) []str
 	case RoleUser:
 		rendered = StyleUserMsg.Render("> " + entry.Content)
 	case RoleAgent:
-		rendered = StyleAgentMsg.Render(RenderMarkdown(entry.Content))
+		rendered = StyleAgentMsg.Render(RenderMarkdownWithWidth(entry.Content, max(1, width-2)))
 	case RoleSystem, RoleTool:
 		rendered = entry.Content
 	}
@@ -196,8 +188,7 @@ func (s *HistoryStore) clampScrollOffset() {
 	}
 }
 
-// maxScrollOffset returns the maximum allowed scroll offset based on entry count.
-// This is a rough estimate; exact calculation requires rendering all entries.
+// maxScrollOffset returns the maximum allowed offset from actual rendered lines.
 func (s *HistoryStore) maxScrollOffset() int {
 	return max(0, s.lastTotalLines-s.lastMaxLines)
 }

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -114,16 +113,9 @@ func (sc *ScreenComponent) SetSessions(sessions []SessionEntry) {
 	sc.sessionsList = sessions
 }
 
-// SetSessionIndex sets the session list selection index.
-func (sc *ScreenComponent) SetSessionIndex(idx int) {
-	sc.sessionListIndex = idx
-}
-
 // Render produces the selection screen output.
 func (sc *ScreenComponent) Render(width int) []string {
-	if width <= 0 {
-		width = 80
-	}
+	width = sanitizedWidth(width)
 
 	if sc.screenType == "permission" {
 		return sc.renderPermissionScreen()
@@ -198,5 +190,3 @@ func (sc *ScreenComponent) renderSessionScreen() []string {
 }
 
 // permModeNames is defined in view.go — referenced here for the permission screen.
-var _ = fmt.Sprintf     // ensure fmt import
-var _ = strings.Contains // ensure strings import

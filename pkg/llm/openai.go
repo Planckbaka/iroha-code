@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"math"
-	"math/rand"
 	"net/http"
 	"strings"
 	"sync"
@@ -28,6 +26,7 @@ type OpenAICompatibleAdapter struct {
 	systemPrompt     string
 	hooks            AdapterHooks
 	cumulativeTokens int
+	client           *http.Client
 }
 
 // SetSystemPrompt atomically replaces the active system prompt (s10 dynamic refresh).
@@ -54,6 +53,7 @@ func NewOpenAICompatibleAdapter(modelName string, apiKey string, baseURL string,
 		baseURL:      baseURL,
 		systemPrompt: systemPrompt,
 		hooks:        hooks,
+		client:       &http.Client{Timeout: APITimeout()},
 	}
 }
 
@@ -68,6 +68,8 @@ func (g *OpenAICompatibleAdapter) CumulativeTokens() int {
 func (g *OpenAICompatibleAdapter) AddTokens(n int) {
 	g.cumulativeTokens += n
 }
+
+func (g *OpenAICompatibleAdapter) DirectHTTPAdapter() {}
 
 // Zhipu GLM-4 API structures (OpenAI compatible)
 type chatMessage struct {
@@ -288,7 +290,7 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 
 		var resp *http.Response
 		var lastErr error
-		maxRetries := 3
+		maxRetries := MaxRetries()
 
 		for attempt := 0; attempt <= maxRetries; attempt++ {
 			if attempt > 0 {
@@ -300,36 +302,8 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 					return
 				}
 
-				delaySec := 1.0 * math.Pow(2.0, float64(attempt-1))
-				jitter := (rand.Float64() * 0.4) - 0.2
-				delaySec = delaySec + (delaySec * jitter)
-
-				// Override with Retry-After header value if available.
-				// (resp may carry the header from the previous 429 attempt.)
-				if resp != nil {
-					if ra := parseRetryAfter(resp); ra > 0 {
-						delaySec = ra
-					}
-				}
-
-				if delaySec > 60.0 {
-					delaySec = 60.0
-				}
-				if delaySec < 1.0 {
-					delaySec = 1.0
-				}
-
-				warnMsg := fmt.Sprintf("\n⚠️  [Network Error] Retrying attempt %d/%d, waiting ~%.1f seconds...\n", attempt, maxRetries, delaySec)
-				if !yield(&model.LLMResponse{
-					Content: &genai.Content{
-						Role: "model",
-						Parts: []*genai.Part{
-							{Text: warnMsg},
-						},
-					},
-					Partial:      true,
-					TurnComplete: false,
-				}, nil) {
+				delay := RetryDelay(attempt, resp)
+				if !yield(RetryNotice(lastErr.Error(), attempt, maxRetries, delay), nil) {
 					return
 				}
 
@@ -339,7 +313,7 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 						return
 					}
 					return
-				case <-time.After(time.Duration(delaySec * float64(time.Second))):
+				case <-time.After(delay):
 				}
 			}
 
@@ -352,11 +326,7 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpReq.Header.Set("Authorization", "Bearer "+g.apiKey)
 
-			client := &http.Client{
-				Timeout: 30 * time.Second,
-			}
-
-			resp, err = client.Do(httpReq)
+			resp, err = g.client.Do(httpReq)
 			if err != nil {
 				lastErr = fmt.Errorf("LLM API call (%s) failed: %w", g.modelName, err)
 				continue
@@ -366,7 +336,7 @@ func (g *OpenAICompatibleAdapter) GenerateContent(ctx context.Context, req *mode
 				bodyBytes, _ := io.ReadAll(resp.Body)
 				_ = resp.Body.Close()
 
-				isTransient := resp.StatusCode == 429 || resp.StatusCode >= 500
+				isTransient := IsRetryableHTTPStatus(resp.StatusCode)
 				lastErr = fmt.Errorf("LLM API (%s) returned error code %d: %s", g.modelName, resp.StatusCode, string(bodyBytes))
 
 				if isTransient {

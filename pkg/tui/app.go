@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -36,7 +37,6 @@ type App struct {
 
 	// External interfaces
 	runner *agent.CustomRunner
-	respon BridgeResponder
 
 	// Session context
 	ctx       context.Context
@@ -61,11 +61,12 @@ type App struct {
 	// streamRenderCache memoizes the Glamour render of streamedText so the
 	// expensive CommonMark parse only runs when the text actually changes,
 	// not on every tick/keystroke during streaming.
-	streamRenderCacheKey string
-	streamRenderCacheVal string
-	currentPrompt        string
-	lastError            error
-	lastRawResp          string
+	streamRenderCacheKey   string
+	streamRenderCacheWidth int
+	streamRenderCacheVal   string
+	currentPrompt          string
+	lastError              error
+	lastRawResp            string
 
 	// Startup
 	startInSessionPicker bool
@@ -104,7 +105,7 @@ func NewApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 	app.input = NewInputComponent(focus, histMgr)
 	app.confirm = NewConfirmComponent()
 	app.status = NewStatusBarComponent()
-	app.slash = NewSlashMenuComponent(allSlashCommandsAsEntries())
+	app.slash = NewSlashMenuComponent(AllSlashCommands)
 	app.screens = NewScreenComponent()
 
 	// Wire slash menu into input
@@ -117,6 +118,9 @@ func NewApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 	app.screens.OnPermSelect = app.handlePermSelect
 	app.screens.OnSessionSelect = app.handleSessionSelect
 	app.screens.OnNewSession = app.handleNewSession
+
+	// Initialize components that derive internal state from the App state.
+	app.notifyStateChange(app.state)
 
 	return app
 }
@@ -132,7 +136,18 @@ func (a *App) HandleEvent(event any) bool {
 	case StreamTextMsg:
 		a.state = stateStreaming
 		a.streamedText += msg.Text
-		matches := statusTagRe.FindAllStringSubmatch(a.streamedText, -1)
+		// Only scan the new chunk for status tags to avoid O(n) regex on the
+		// full accumulated text on every streaming tick.
+		matches := statusTagRe.FindAllStringSubmatch(msg.Text, -1)
+		if len(matches) == 0 {
+			// Fallback: check a small tail window for tags that may span
+			// chunk boundaries.
+			checkStart := len(a.streamedText) - len(msg.Text) - 50
+			if checkStart < 0 {
+				checkStart = 0
+			}
+			matches = statusTagRe.FindAllStringSubmatch(a.streamedText[checkStart:], 1)
+		}
 		if len(matches) > 0 {
 			a.status.SetStatusText(matches[len(matches)-1][1])
 		}
@@ -168,11 +183,16 @@ func (a *App) handleKey(k Key) bool {
 		}
 		if a.state != statePrompt {
 			a.cancel()
+			a.resetExecutionContext()
 			elapsed := time.Duration(0)
 			if !a.roundStartTime.IsZero() {
 				elapsed = time.Since(a.roundStartTime)
 			}
-			a.streamedText += "\n" + RenderCancelCard(elapsed)
+			if a.streamedText != "" {
+				a.history.Add(HistoryEntry{Role: RoleAgent, Content: a.streamedText})
+				a.streamedText = ""
+			}
+			a.history.Add(HistoryEntry{Role: RoleSystem, Content: RenderCancelCard(elapsed)})
 			a.finalizeTurn()
 			return false
 		}
@@ -194,6 +214,14 @@ func (a *App) handleKey(k Key) bool {
 			pageLines = 20
 		}
 		a.history.PageDown(pageLines)
+		return false
+	}
+	if k.Type == KeyWheelUp {
+		a.history.ScrollUp(3)
+		return false
+	}
+	if k.Type == KeyWheelDown {
+		a.history.ScrollDown(3)
 		return false
 	}
 
@@ -219,15 +247,16 @@ func (a *App) activeComponents() []Component {
 // renderStreamedMarkdown returns the Glamour-rendered form of the current
 // streamedText, memoized so the parse only runs when the text changes. During
 // streaming this is called on every tick, so caching avoids redundant CPU work.
-func (a *App) renderStreamedMarkdown() string {
+func (a *App) renderStreamedMarkdown(width int) string {
 	if a.streamedText == "" {
 		return ""
 	}
-	if a.streamRenderCacheKey == a.streamedText {
+	if a.streamRenderCacheKey == a.streamedText && a.streamRenderCacheWidth == width {
 		return a.streamRenderCacheVal
 	}
-	rendered := RenderMarkdown(a.streamedText)
+	rendered := RenderMarkdownWithWidth(a.streamedText, width)
 	a.streamRenderCacheKey = a.streamedText
+	a.streamRenderCacheWidth = width
 	a.streamRenderCacheVal = rendered
 	return rendered
 }
@@ -252,82 +281,29 @@ func (a *App) Render() []string {
 		topLines = append(topLines, strings.Split(strings.TrimRight(task, "\n"), "\n")...)
 	}
 
-	var activeLines []string
+	var welcomeLines []string
 	if a.history.Len() == 0 && a.state == statePrompt {
-		activeLines = append(activeLines, strings.Split(strings.TrimRight(RenderWelcomeCard(a.runner), "\n"), "\n")...)
+		welcomeLines = strings.Split(strings.TrimRight(RenderWelcomeCard(a.runner), "\n"), "\n")
 	}
 
-	// 2. Active stream / thinking / confirming
-	switch a.state {
-	case stateThinking:
-		spinnerStyled := currentSpinnerFrame()
-
-		if a.chat.activeTool.Running {
-			color, icon, _ := getToolCategoryTheme(a.chat.activeTool.Name)
-			activity := FormatToolActivity(a.chat.activeTool.Name, a.chat.activeTool.Args)
-			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
-			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
-
-			activeLines = append(activeLines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
-
-			if len(a.chat.activeTool.StreamLines) > 0 {
-				cmdDisplay := ""
-				if argMap, ok := a.chat.activeTool.Args.(map[string]any); ok {
-					if cmd, ok := argMap["command"].(string); ok {
-						cmdDisplay = cmd
-					}
-				}
-				streamArea := RenderShellStreamArea(a.chat.activeTool.StreamLines, cmdDisplay, a.width)
-				if streamArea != "" {
-					activeLines = append(activeLines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
-				}
-			}
-		} else {
-			textStyled := StyleThinkingText.Render("thinking...")
-			activeLines = append(activeLines, "", "  "+spinnerStyled+" "+textStyled)
-		}
-	case stateStreaming:
-		fullText := a.renderedText
-		if a.streamedText != "" {
-			fullText = a.renderStreamedMarkdown()
-		}
-		if fullText != "" {
-			rendered := StyleAgentMsg.Render(fullText)
-			activeLines = append(activeLines, "")
-			activeLines = append(activeLines, strings.Split(rendered, "\n")...)
-		}
-		if a.chat.activeTool.Running {
-			spinnerStyled := currentSpinnerFrame()
-
-			color, icon, _ := getToolCategoryTheme(a.chat.activeTool.Name)
-			activity := FormatToolActivity(a.chat.activeTool.Name, a.chat.activeTool.Args)
-			iconStyled := lipgloss.NewStyle().Foreground(color).Render(icon)
-			textStyled := lipgloss.NewStyle().Foreground(color).Render("running " + strings.ToLower(activity) + "...")
-
-			activeLines = append(activeLines, "", "  "+spinnerStyled+" "+iconStyled+" "+textStyled)
-
-			if len(a.chat.activeTool.StreamLines) > 0 {
-				cmdDisplay := ""
-				if argMap, ok := a.chat.activeTool.Args.(map[string]any); ok {
-					if cmd, ok := argMap["command"].(string); ok {
-						cmdDisplay = cmd
-					}
-				}
-				streamArea := RenderShellStreamArea(a.chat.activeTool.StreamLines, cmdDisplay, a.width)
-				if streamArea != "" {
-					activeLines = append(activeLines, strings.Split(strings.TrimRight(streamArea, "\n"), "\n")...)
-				}
-			}
-		}
-	case stateConfirming:
-		activeLines = append(activeLines, a.confirm.Render(a.width)...)
+	streamRendered := a.renderedText
+	if a.streamedText != "" {
+		streamRendered = a.renderStreamedMarkdown(max(1, a.width-2))
 	}
+	activeLines := a.chat.RenderTail(a.state, a.width, "", streamRendered, welcomeLines, a.confirm.Render(a.width))
 
 	// 3. Fixed input chrome
 	var bottomLines []string
 	bottomLines = append(bottomLines, lipgloss.NewStyle().Foreground(ColorSecondary).Render(strings.Repeat("─", max(1, a.width))))
 
 	if slashLines := a.slash.Render(a.width); len(slashLines) > 0 {
+		inputLines := a.input.Render(a.width)
+		statusLines := a.status.Render(a.width)
+		menuBudget := max(0, a.height-len(topLines)-len(bottomLines)-len(inputLines)-len(statusLines)-1)
+		if len(slashLines) > menuBudget {
+			start := min(max(0, a.slash.index-menuBudget+1), len(slashLines)-menuBudget)
+			slashLines = slashLines[start : start+menuBudget]
+		}
 		bottomLines = append(bottomLines, slashLines...)
 	}
 
@@ -336,6 +312,7 @@ func (a *App) Render() []string {
 
 	if a.state == statePrompt {
 		promptPrefix := "┃ "
+		prefixWidth := lipgloss.Width(promptPrefix)
 		cursorIdx := a.input.focus.CursorIndex
 		if cursorIdx > len(a.input.focus.Buffer) {
 			cursorIdx = len(a.input.focus.Buffer)
@@ -344,16 +321,13 @@ func (a *App) Render() []string {
 			cursorIdx = 0
 		}
 		beforeCursor := a.input.focus.Buffer[:cursorIdx]
-		linesBefore := strings.Split(string(beforeCursor), "\n")
+		linesBefore := WrapInput(string(beforeCursor), prefixWidth, a.width)
+		if len(linesBefore) == 0 {
+			linesBefore = []string{""}
+		}
 		cursorLineIdx := len(linesBefore) - 1
 
-		prefixWidth := lipgloss.Width(promptPrefix)
-		linePrefixWidth := 0
-		if cursorLineIdx == 0 {
-			linePrefixWidth = prefixWidth
-		}
-
-		a.cursorCol = linePrefixWidth + lipgloss.Width(linesBefore[cursorLineIdx]) + 1
+		a.cursorCol = min(a.width, prefixWidth+lipgloss.Width(linesBefore[cursorLineIdx])+1)
 		a.cursorRow = inputStartRow + cursorLineIdx
 	}
 
@@ -409,7 +383,9 @@ func (a *App) handleConfirmResponse(response string) {
 }
 
 func (a *App) handlePermSelect(mode string) {
-	_ = agent.GlobalPermissionManager.SetMode(modeToPermMode(mode))
+	if err := agent.GlobalPermissionManager.SetMode(modeToPermMode(mode)); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to set permission mode: %v\n", err)
+	}
 	old := a.state
 	if a.startInSessionPicker {
 		a.state = stateSessionSelect
@@ -421,8 +397,10 @@ func (a *App) handlePermSelect(mode string) {
 }
 
 func (a *App) handleSessionSelect(sessionID string) {
+	if !a.loadHistoryFromSession(sessionID) {
+		return
+	}
 	a.sessionID = sessionID
-	a.loadHistoryFromSession(sessionID)
 	old := a.state
 	a.state = statePrompt
 	a.notifyStateChange(old)
@@ -430,7 +408,7 @@ func (a *App) handleSessionSelect(sessionID string) {
 
 func (a *App) handleNewSession() {
 	a.sessionID = uuid.New().String()
-	a.history = NewHistoryStore()
+	a.replaceHistory(NewHistoryStore())
 	a.totalTokens = 0
 	old := a.state
 	a.state = statePrompt
@@ -445,6 +423,9 @@ func (a *App) executePrompt(prompt string) {
 	a.currentPrompt = prompt
 	a.streamedText = ""
 	a.renderedText = ""
+	a.streamRenderCacheKey = ""
+	a.streamRenderCacheWidth = 0
+	a.streamRenderCacheVal = ""
 	a.lastError = nil
 	a.state = stateThinking
 	a.roundCount++
@@ -488,7 +469,7 @@ func (a *App) handleToolStatus(status agent.ToolStatus) {
 		}
 
 		if a.streamedText != "" {
-			a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderMarkdown(a.streamedText)})
+			a.history.Add(HistoryEntry{Role: RoleAgent, Content: a.streamedText})
 			a.streamedText = ""
 		}
 		a.history.Add(HistoryEntry{Role: RoleTool, Content: logLine})
@@ -518,11 +499,11 @@ func (a *App) finalizeTurn() {
 
 	// Add agent response to history
 	if a.lastError != nil {
-		a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderErrorCard(a.lastError)})
+		a.history.Add(HistoryEntry{Role: RoleSystem, Content: RenderErrorCard(a.lastError)})
 		a.lastError = nil
 	} else if a.streamedText != "" {
 		a.lastRawResp = a.streamedText
-		a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderMarkdown(a.streamedText)})
+		a.history.Add(HistoryEntry{Role: RoleAgent, Content: a.streamedText})
 		a.streamedText = ""
 	}
 
@@ -558,16 +539,16 @@ func (a *App) loadSessionsList() {
 	a.screens.SetSessions(entries)
 }
 
-// loadHistoryFromSession loads history from a previous session.
-func (a *App) loadHistoryFromSession(sessionID string) {
+// loadHistoryFromSession replaces the timeline with a previous session.
+func (a *App) loadHistoryFromSession(sessionID string) bool {
 	if agent.GlobalSessionService == nil {
-		return
+		return false
 	}
 	resp, err := agent.GlobalSessionService.Get(context.Background(), &session.GetRequest{
 		SessionID: sessionID,
 	})
 	if err != nil || resp.Session == nil {
-		return
+		return false
 	}
 
 	var events []*session.Event
@@ -624,12 +605,24 @@ func (a *App) loadHistoryFromSession(sessionID string) {
 		turns = append(turns, *currentTurn)
 	}
 
+	loaded := NewHistoryStore()
 	for _, t := range turns {
-		a.history.Add(HistoryEntry{Role: RoleUser, Content: t.prompt})
+		loaded.Add(HistoryEntry{Role: RoleUser, Content: t.prompt})
 		if t.response != "" {
-			a.history.Add(HistoryEntry{Role: RoleAgent, Content: RenderMarkdown(t.response)})
+			loaded.Add(HistoryEntry{Role: RoleAgent, Content: t.response})
 		}
 	}
+	a.replaceHistory(loaded)
+	return true
+}
+
+func (a *App) replaceHistory(history *HistoryStore) {
+	a.history = history
+	a.chat.SetHistory(history)
+}
+
+func (a *App) resetExecutionContext() {
+	a.ctx, a.cancel = context.WithCancel(context.Background())
 }
 
 // Width returns current terminal width.
@@ -645,14 +638,6 @@ func (a *App) historyManager() *HistoryManager {
 }
 
 // Helper functions
-
-func allSlashCommandsAsEntries() []SlashCommand {
-	var entries []SlashCommand
-	for _, cmd := range AllSlashCommands {
-		entries = append(entries, SlashCommand{Command: cmd.Command, Description: cmd.Description})
-	}
-	return entries
-}
 
 func modeToPermMode(label string) agent.PermissionMode {
 	switch strings.ToLower(label) {
@@ -679,7 +664,12 @@ func (a *App) UpdateWidth() {
 // RunApp is the new entry point that uses App instead of Model.
 func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker bool, initialMode agent.PermissionMode, startupPrompt string) error {
 	app := NewApp(runner, sessionID, startInSessionPicker, startupPrompt)
+	defer app.cancel()
 	renderer := NewRawRenderer(os.Stdout)
+	if mouseTrackingEnabled() {
+		enableMouseTracking(os.Stdout)
+		defer disableMouseTracking(os.Stdout)
+	}
 	eventChan := make(chan any, 256)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -687,7 +677,9 @@ func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 
 	// Apply initial mode
 	if initialMode != "" {
-		_ = agent.GlobalPermissionManager.SetMode(initialMode)
+		if err := agent.GlobalPermissionManager.SetMode(initialMode); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: failed to set permission mode: %v\n", err)
+		}
 		old := app.state
 		if startInSessionPicker {
 			app.state = stateSessionSelect
@@ -787,6 +779,19 @@ func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 	}
 }
 
+func enableMouseTracking(out io.Writer) {
+	fmt.Fprint(out, "\x1b[?1000h\x1b[?1006h")
+}
+
+func disableMouseTracking(out io.Writer) {
+	fmt.Fprint(out, "\x1b[?1006l\x1b[?1000l")
+}
+
+func mouseTrackingEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("IROHA_ENABLE_MOUSE")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
 // handleRawSlashCommand processes slash commands.
 func (a *App) handleRawSlashCommand(inputVal string) bool {
 	parts := strings.Fields(inputVal)
@@ -873,15 +878,47 @@ func (a *App) handleRawSlashCommand(inputVal string) bool {
 	case "/help", "/commands":
 		replyLog = RenderHelpDashboard()
 
+	case "/mcp":
+		if len(parts) >= 2 && parts[1] == "reload" {
+			toolCount, err := agent.RebuildToolPool()
+			if err != nil {
+				replyLog = StyleToolError.Render(fmt.Sprintf("[error] MCP reload failed: %v", err))
+			} else {
+				servers := agent.GlobalMCPRouter.ListServers()
+				var sb strings.Builder
+				sb.WriteString(StyleToolSuccess.Render(fmt.Sprintf("MCP tool pool rebuilt (v%d): %d tools, %d servers",
+					agent.ToolPoolVersion(), toolCount, len(servers))))
+				for name, status := range servers {
+					sb.WriteString(fmt.Sprintf("\n  %-20s %s", name, status))
+				}
+				replyLog = sb.String()
+			}
+		} else {
+			servers := agent.GlobalMCPRouter.ListServers()
+			
+			var sb strings.Builder
+			sb.WriteString(StyleKeyActive.Render(fmt.Sprintf("MCP Plugin Status: %d servers", len(servers))) + "\n")
+			sb.WriteString(strings.Repeat("-", 40) + "\n")
+			for name, status := range servers {
+				tag := StyleToolSuccess.Render(status)
+				if status != "connected" {
+					tag = StyleToolError.Render(status)
+				}
+				sb.WriteString(fmt.Sprintf("  %-20s %s\n", name, tag))
+			}
+			if len(servers) == 0 {
+				sb.WriteString("  (no MCP servers configured)\n")
+			}
+			sb.WriteString("\n  Use /mcp reload to rescan plugins")
+			replyLog = sb.String()
+		}
+
 	default:
 		replyLog = StyleToolError.Render(fmt.Sprintf("[error] Unknown command: %s", cmdName))
 	}
 
-	a.history.Add(HistoryEntry{Role: RoleUser, Content: "> " + inputVal})
+	a.history.Add(HistoryEntry{Role: RoleUser, Content: inputVal})
 	a.history.Add(HistoryEntry{Role: RoleSystem, Content: replyLog})
 	return false
 }
 
-// Ensure unused imports are referenced
-var _ = fmt.Sprintf
-var _ = uuid.New

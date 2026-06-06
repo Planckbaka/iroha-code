@@ -1,62 +1,64 @@
-<!-- Generated: 2026-05-23 | Updated: 2026-06-03 -->
+<!-- Generated: 2026-06-05 | Updated: 2026-06-05 -->
 
-# iroha-code
+# iroha (go-claude)
 
 ## Purpose
-An interactive AI Agent CLI built in Go, powered by 7 LLM providers (GLM, OpenAI, Claude, DeepSeek, Kimi, SiliconFlow, Gemini) with a Bubble Tea TUI, human-in-the-loop tool-use permissions, hook system, cross-session memory, task DAG planning, team coordination, MCP plugin routing, and autonomous execution. Designed as a Claude Code-inspired agent for the terminal.
+An interactive, terminal-native AI coding agent CLI (binary: `iroha`). Bridges Google Genkit / Google ADK for multi-provider LLM orchestration (Gemini, Claude, OpenAI, DeepSeek, GLM) with Charm's Bubble Tea TUI framework for the user interface. Features human-in-the-loop permission approvals, hook pipelines, cross-session persistent memory, structured task tracking, team coordination, MCP plugin routing, and autonomous execution modes. Designed as a Claude Code-inspired agent for the terminal.
 
 ## Key Files
 | File | Description |
 |------|-------------|
-| `go.mod` | Go module definition (go 1.26.1, Charm stack, Google ADK/GenAI, Firebase Genkit) |
-| `go.sum` | Dependency checksums |
-| `.gitignore` | Excludes binary (`/iroha`), `.omc/`, `.iroha/`, `scratch/` |
-| `system_prompt.md` | Default system prompt template for the agent |
+| `go.mod` | Module `iroha`, Go 1.26.1, direct deps: Charm stack, Firebase Genkit, Google ADK/GenAI, UUID, yaml |
+| `system_prompt.md` | Default system prompt template loaded by the agent at runtime |
 | `.golangci.yml` | Linter config (errcheck, govet, revive, staticcheck) |
 | `.goreleaser.yml` | GoReleaser build and release configuration |
-| `install.sh` | Installation script |
+| `install.sh` | One-line installer script (curl pipe sh) |
+| `DESIGN.md` | Product design doc: brand, visual language, component inventory, interaction states |
+| `README.md` | User-facing docs: features, quick start, slash commands, permission modes |
+| `CONTRIBUTING.md` | Contribution guide and dev environment setup |
 
 ## Subdirectories
 | Directory | Purpose |
 |-----------|---------|
-| `cmd/` | Application entry points (see `cmd/AGENTS.md`) |
+| `cmd/` | CLI entry points (see `cmd/AGENTS.md`) |
 | `pkg/` | Core library packages (see `pkg/AGENTS.md`) |
-| `docs/` | Project documentation and analysis |
-| `.github/` | CI workflows, issue/PR templates |
-| `scratch/` | Debug and experimental scripts |
+| `docs/` | Project documentation and roadmap (see `docs/AGENTS.md`) |
+| `scratch/` | Debug scripts and experimental throwaway code (gitignored) |
+| `test/` | Integration test suites (see `test/AGENTS.md`) |
 
 ## For AI Agents
 
 ### Working In This Directory
-- Run `go build -o iroha ./cmd/agent-cli` to compile the binary
-- Run `go test ./...` to execute all tests
-- The binary output is `./iroha` at repo root
-- Config is stored at `~/.iroha.json` (outside repo)
-- Project-local state lives in `./.iroha/` (gitignored)
-- Auto-migrates from legacy `~/.go-claude.json` path
+- Build: `go build -o iroha ./cmd/agent-cli`
+- Test all: `go test ./...`
+- Test specific packages: `go test ./pkg/tui/ ./pkg/llm/ ./pkg/agent/`
+- Tidy modules: `go mod tidy`
+- Binary output is `./iroha` at repo root
+- User config stored at `~/.iroha.json` (outside repo)
+- Project-local state in `./.iroha/` (gitignored)
 
 ### Testing Requirements
-- Unit tests live alongside source files (`*_test.go`)
-- Run `go test ./pkg/...` for all package tests
-- Test coverage: ~25% (3,633 test lines / ~16,000 source lines)
-- Key gaps: `tools.go` / `tools_*.go` have no dedicated tests
+- Unit tests live alongside source (`*_test.go`)
+- Key tested packages: `pkg/tui`, `pkg/llm`, `pkg/agent`
+- Test gaps: `tools.go` / `tools_*.go` lack dedicated tests
 
 ### Common Patterns
-- Standard Go project layout: `cmd/` for binaries, `pkg/` for libraries
-- Google ADK (`google.golang.org/adk`) for agent framework
-- Firebase Genkit (`github.com/firebase/genkit/go`) for Gemini/Claude SDK bridging
-- Charm stack (Bubble Tea, Lipgloss, Glamour, Bubbles) for TUI
-- English-language user-facing strings throughout (migrated from Chinese)
+- Standard Go layout: `cmd/` for binaries, `pkg/` for libraries
+- Google ADK (`google.golang.org/adk`) as agent framework
+- Firebase Genkit for Gemini/Claude SDK bridging and OpenTelemetry tracing
+- Charm stack (Bubble Tea, Lipgloss, Glamour) for TUI
+- Three-level permission model: Default (confirm), Plan (read-only), Auto (silent)
+- Hook system: `PreToolUse`, `PostToolUse`, `SessionStart` lifecycle hooks
 
 ## Dependencies
 
 ### External
-- `github.com/charmbracelet/bubbletea` v1.3.10 — TUI framework
 - `github.com/charmbracelet/lipgloss` v1.1.1 — Terminal styling
 - `github.com/charmbracelet/glamour` v1.0.0 — Markdown rendering
-- `github.com/charmbracelet/bubbles` v1.0.0 — TUI components
-- `google.golang.org/adk` v1.2.1 — Agent development kit
+- `github.com/charmbracelet/x/ansi` v0.11.6 — ANSI utilities
+- `github.com/firebase/genkit/go` v1.8.0 — Firebase Genkit Go SDK (LLM orchestration)
+- `github.com/google/uuid` v1.6.0 — UUID generation
+- `google.golang.org/adk` v1.2.1 — Google Agent Development Kit
 - `google.golang.org/genai` v1.57.0 — Generative AI types
-- `github.com/firebase/genkit/go` — Firebase Genkit Go SDK
-
-<!-- MANUAL: Custom project notes can be added below -->
+- `golang.org/x/term` v0.43.0 — Terminal control
+- `gopkg.in/yaml.v3` v3.0.1 — YAML parsing

@@ -212,6 +212,7 @@ func (r *MCPToolRouter) DiscoverTools() ([]tool.Tool, error) {
 	return tools, nil
 }
 
+
 // CloseAll terminates all running plugin server backends.
 func (r *MCPToolRouter) CloseAll() {
 	r.mu.Lock()

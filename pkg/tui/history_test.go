@@ -19,13 +19,14 @@ func TestHistoryStore_Add(t *testing.T) {
 		t.Errorf("expected 2 entries, got %d", s.Len())
 	}
 
-	e, ok := s.Entry(0)
-	if !ok || e.Role != RoleUser || e.Content != "hello" {
+	if len(s.entries) < 2 {
+		t.Fatal("expected 2 entries")
+	}
+	if s.entries[0].Role != RoleUser || s.entries[0].Content != "hello" {
 		t.Error("first entry should be user message 'hello'")
 	}
 
-	e, ok = s.Entry(1)
-	if !ok || e.Role != RoleAgent || e.Content != "world" {
+	if s.entries[1].Role != RoleAgent || s.entries[1].Content != "world" {
 		t.Error("second entry should be agent message 'world'")
 	}
 }
@@ -36,7 +37,10 @@ func TestHistoryStore_AddSetsTimestamp(t *testing.T) {
 	s.Add(HistoryEntry{Role: RoleUser, Content: "test"})
 	after := time.Now()
 
-	e, _ := s.Entry(0)
+	if len(s.entries) == 0 {
+		t.Fatal("expected 1 entry")
+	}
+	e := s.entries[0]
 	if e.TS.Before(before) || e.TS.After(after) {
 		t.Error("timestamp should be set to current time")
 	}
@@ -68,6 +72,23 @@ func TestHistoryStore_Render(t *testing.T) {
 	}
 	if !strings.Contains(joined, "msg2") {
 		t.Error("rendered output should contain msg2")
+	}
+}
+
+func TestHistoryStore_RendersRawAgentMarkdownOnce(t *testing.T) {
+	s := NewHistoryStore()
+	s.Add(HistoryEntry{Role: RoleAgent, Content: "**bold**"})
+
+	if len(s.entries) == 0 {
+		t.Fatal("expected agent entry")
+	}
+	if s.entries[0].Content != "**bold**" {
+		t.Fatalf("history should retain raw markdown, got %q", s.entries[0].Content)
+	}
+
+	rendered := strings.Join(s.Render(80, 100), "\n")
+	if strings.Contains(rendered, "**bold**") {
+		t.Fatalf("agent markdown should be rendered for display, got %q", rendered)
 	}
 }
 
@@ -206,17 +227,14 @@ func TestHistoryStore_InvalidateCache(t *testing.T) {
 	}
 }
 
-func TestHistoryStore_EntryOutOfBounds(t *testing.T) {
+func TestHistoryStore_EntriesDirectAccess(t *testing.T) {
 	s := NewHistoryStore()
 	s.Add(HistoryEntry{Role: RoleUser, Content: "only one"})
 
-	_, ok := s.Entry(-1)
-	if ok {
-		t.Error("negative index should return false")
+	if len(s.entries) != 1 {
+		t.Errorf("expected 1 entry, got %d", len(s.entries))
 	}
-
-	_, ok = s.Entry(5)
-	if ok {
-		t.Error("out of range index should return false")
+	if s.entries[0].Content != "only one" {
+		t.Errorf("expected 'only one', got %q", s.entries[0].Content)
 	}
 }

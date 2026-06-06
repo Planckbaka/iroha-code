@@ -138,6 +138,7 @@ func TestOpenAIAdapter_MultiToolCall(t *testing.T) {
 }
 
 func TestOpenAIAdapter_TransientFailureRetry(t *testing.T) {
+	ResetRetryBudget() // ensure clean retry budget state
 	var attempts int32
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -23,7 +23,7 @@ var AllSlashCommands = []SlashMenuItem{
 	{"/task", "View task planning board"},
 	{"/team", "View multi-agent team status"},
 	{"/worktree", "View Git Worktree isolation status"},
-	{"/mcp", "View MCP plugin status"},
+	{"/mcp", "View MCP plugin status (reload to rescan plugins)"},
 	{"/bg", "View background task status"},
 	{"/skill", "Invoke a registered skill by name (e.g. /skill tdd-workflow)"},
 	{"/trace", "View tool call trace log for the current session"},
