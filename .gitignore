@@ -11,3 +11,5 @@ scratch/
 .runtime-tasks/
 .worktrees/
 worktrees/
+*.out
+coverage.*

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,9 +16,100 @@ import (
 	"google.golang.org/genai"
 )
 
-// ============================================================================
-// Anthropic adapter additional tests
-// ============================================================================
+func sseServer(events []string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprint(w, e)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+}
+
+func openAISSEServer(events []string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprintln(w, e)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+}
+
+func captureBodyServer() (*httptest.Server, *string) {
+	var body string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := ioReadAll(r.Body)
+		body = string(b)
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":"bad"}`)
+	}))
+	return s, &body
+}
+
+func capturePathServer() (*httptest.Server, *string) {
+	var path string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"error":"bad"}`)
+	}))
+	return s, &path
+}
+
+func captureBodySSEServer(events []string) (*httptest.Server, *string) {
+	var body string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := ioReadAll(r.Body)
+		body = string(b)
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprint(w, e)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+	return s, &body
+}
+
+func captureBodyOpenAISSE(events []string) (*httptest.Server, *string) {
+	var body string
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := ioReadAll(r.Body)
+		body = string(b)
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, e := range events {
+			fmt.Fprintln(w, e)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+	return s, &body
+}
+
+var okOpenAIResponse = []string{
+	`data: {"choices":[{"delta":{"content":"ok"}}]}`,
+	`data: [DONE]`,
+}
+
+func ioReadAll(r io.ReadCloser) ([]byte, error) {
+	defer r.Close()
+	var buf []byte
+	tmp := make([]byte, 4096)
+	for {
+		n, err := r.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if err != nil {
+			return buf, nil
+		}
+	}
+}
 
 func TestAnthropicAdapter_DefaultModelName(t *testing.T) {
 	a := NewAnthropicAdapter("", "key", "http://localhost", "", nil)
@@ -27,12 +119,7 @@ func TestAnthropicAdapter_DefaultModelName(t *testing.T) {
 }
 
 func TestAnthropicAdapter_BaseURLDefault(t *testing.T) {
-	var capturedURL string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedURL = r.URL.Path
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":{"message":"bad"}}`)
-	}))
+	server, capturedURL := capturePathServer()
 	defer server.Close()
 
 	// Test with explicit base URL
@@ -47,8 +134,8 @@ func TestAnthropicAdapter_BaseURLDefault(t *testing.T) {
 			break
 		}
 	}
-	if !strings.Contains(capturedURL, "/v1/messages") {
-		t.Errorf("expected URL to contain /v1/messages, got %s", capturedURL)
+	if !strings.Contains(*capturedURL, "/v1/messages") {
+		t.Errorf("expected URL to contain /v1/messages, got %s", *capturedURL)
 	}
 }
 
@@ -62,19 +149,7 @@ func TestAnthropicAdapter_SystemPromptFromConfig(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server, body := captureBodySSEServer(sseEvents)
 	defer server.Close()
 
 	// No adapter system prompt, but config has SystemInstruction
@@ -93,22 +168,16 @@ func TestAnthropicAdapter_SystemPromptFromConfig(t *testing.T) {
 	for range adapter.GenerateContent(context.Background(), req, true) {
 	}
 
-	if !strings.Contains(receivedBody, "You are a helpful assistant.") {
+	if !strings.Contains(*body, "You are a helpful assistant.") {
 		t.Error("expected system instruction to be in request body")
 	}
-	if !strings.Contains(receivedBody, "Be concise.") {
+	if !strings.Contains(*body, "Be concise.") {
 		t.Error("expected second system instruction part to be in request body")
 	}
 }
 
 func TestAnthropicAdapter_SystemPromptAdapterOverridesConfig(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, body := captureBodyServer()
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "ADAPTER PROMPT", nil)
@@ -129,10 +198,10 @@ func TestAnthropicAdapter_SystemPromptAdapterOverridesConfig(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(receivedBody, "ADAPTER PROMPT") {
+	if !strings.Contains(*body, "ADAPTER PROMPT") {
 		t.Error("adapter prompt should take precedence")
 	}
-	if strings.Contains(receivedBody, "CONFIG PROMPT") {
+	if strings.Contains(*body, "CONFIG PROMPT") {
 		t.Error("config prompt should not appear when adapter prompt is set")
 	}
 }
@@ -147,18 +216,7 @@ func TestAnthropicAdapter_HooksNagReminder(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server, body := captureBodySSEServer(sseEvents)
 	defer server.Close()
 
 	var rounds int32
@@ -180,7 +238,7 @@ func TestAnthropicAdapter_HooksNagReminder(t *testing.T) {
 	if atomic.LoadInt32(&rounds) < 1 {
 		t.Error("expected NoteRound to be called")
 	}
-	if !strings.Contains(receivedBody, "NAG: Do something!") {
+	if !strings.Contains(*body, "NAG: Do something!") {
 		t.Error("expected nag reminder to be injected into request")
 	}
 }
@@ -245,15 +303,7 @@ func TestAnthropicAdapter_MaxTokensTruncation(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -426,15 +476,7 @@ func TestAnthropicAdapter_SSEPingEvent(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -465,13 +507,7 @@ func TestAnthropicAdapter_SSEPingEvent(t *testing.T) {
 }
 
 func TestAnthropicAdapter_ToolsInRequest(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, body := captureBodyServer()
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -496,17 +532,14 @@ func TestAnthropicAdapter_ToolsInRequest(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(receivedBody, "my_tool") {
-		t.Errorf("expected tool name in request body, got: %s", receivedBody)
+	if !strings.Contains(*body, "my_tool") {
+		t.Errorf("expected tool name in request body, got: %s", *body)
 	}
-	if !strings.Contains(receivedBody, "input_schema") {
-		t.Errorf("expected input_schema in request body, got: %s", receivedBody)
+	if !strings.Contains(*body, "input_schema") {
+		t.Errorf("expected input_schema in request body, got: %s", *body)
 	}
 }
 
-// ============================================================================
-// OpenAI adapter additional tests
-// ============================================================================
 
 func TestOpenAIAdapter_DefaultModelName(t *testing.T) {
 	g := NewOpenAICompatibleAdapter("", "key", "http://localhost", "", nil)
@@ -550,15 +583,7 @@ func TestOpenAIAdapter_LengthFinishReason(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -594,15 +619,7 @@ func TestOpenAIAdapter_MultipleToolCalls(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -638,14 +655,7 @@ func TestOpenAIAdapter_MultipleToolCalls(t *testing.T) {
 }
 
 func TestOpenAIAdapter_SystemPromptFromConfig(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -663,8 +673,8 @@ func TestOpenAIAdapter_SystemPromptFromConfig(t *testing.T) {
 	for range adapter.GenerateContent(context.Background(), req, true) {
 	}
 
-	if !strings.Contains(receivedBody, "Config system prompt") {
-		t.Errorf("expected config system prompt in body, got: %s", receivedBody)
+	if !strings.Contains(*body, "Config system prompt") {
+		t.Errorf("expected config system prompt in body, got: %s", *body)
 	}
 }
 
@@ -675,18 +685,7 @@ func TestOpenAIAdapter_HooksIntegration(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server, body := captureBodyOpenAISSE(sseEvents)
 	defer server.Close()
 
 	var rounds int32
@@ -708,18 +707,13 @@ func TestOpenAIAdapter_HooksIntegration(t *testing.T) {
 	if atomic.LoadInt32(&rounds) < 1 {
 		t.Error("expected NoteRound to be called")
 	}
-	if !strings.Contains(receivedBody, "REMINDER!") {
+	if !strings.Contains(*body, "REMINDER!") {
 		t.Error("expected nag reminder in request body")
 	}
 }
 
 func TestOpenAIAdapter_BaseURLPathConstruction(t *testing.T) {
-	var capturedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, capturedPath := capturePathServer()
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -735,18 +729,13 @@ func TestOpenAIAdapter_BaseURLPathConstruction(t *testing.T) {
 		}
 	}
 
-	if capturedPath != "/chat/completions" {
-		t.Errorf("expected /chat/completions path, got %s", capturedPath)
+	if *capturedPath != "/chat/completions" {
+		t.Errorf("expected /chat/completions path, got %s", *capturedPath)
 	}
 }
 
 func TestOpenAIAdapter_BaseURLAlreadyHasChatCompletions(t *testing.T) {
-	var capturedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, capturedPath := capturePathServer()
 	defer server.Close()
 
 	baseURL := server.URL + "/chat/completions"
@@ -763,12 +752,12 @@ func TestOpenAIAdapter_BaseURLAlreadyHasChatCompletions(t *testing.T) {
 		}
 	}
 
-	if !strings.HasSuffix(capturedPath, "/chat/completions") {
-		t.Errorf("expected path ending with /chat/completions, got %s", capturedPath)
+	if !strings.HasSuffix(*capturedPath, "/chat/completions") {
+		t.Errorf("expected path ending with /chat/completions, got %s", *capturedPath)
 	}
 	// Should NOT double the path
-	if strings.Contains(capturedPath, "chat/completions/chat") {
-		t.Errorf("path should not be doubled, got %s", capturedPath)
+	if strings.Contains(*capturedPath, "chat/completions/chat") {
+		t.Errorf("path should not be doubled, got %s", *capturedPath)
 	}
 }
 
@@ -779,15 +768,7 @@ func TestOpenAIAdapter_InvalidJSONInSSE(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -827,15 +808,7 @@ func TestOpenAIAdapter_ToolCallStreaming(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -870,9 +843,6 @@ func TestOpenAIAdapter_ToolCallStreaming(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// Retry additional tests
-// ============================================================================
 
 func TestIsRetryableTemporaryError_NilError(t *testing.T) {
 	if IsRetryableTemporaryError(nil) {
@@ -1012,9 +982,6 @@ func TestRetryBudget_ResetUpdatesMax(t *testing.T) {
 	}
 }
 
-// ============================================================================
-// DirectHTTPAdapter marker interface tests
-// ============================================================================
 
 func TestDirectHTTPAdapter_Anthropic(t *testing.T) {
 	var _ DirectHTTPAdapter = &AnthropicAdapter{}
@@ -1024,39 +991,10 @@ func TestDirectHTTPAdapter_OpenAI(t *testing.T) {
 	var _ DirectHTTPAdapter = &OpenAICompatibleAdapter{}
 }
 
-// ioReadAll helper for reading request bodies
-func ioReadAll(r ioReadCloser) ([]byte, error) {
-	defer r.Close()
-	return ioReadAllImpl(r)
-}
-
-type ioReadCloser interface {
-	Read([]byte) (int, error)
-	Close() error
-}
-
-func ioReadAllImpl(r interface{ Read([]byte) (int, error) }) ([]byte, error) {
-	var buf []byte
-	tmp := make([]byte, 4096)
-	for {
-		n, err := r.Read(tmp)
-		buf = append(buf, tmp[:n]...)
-		if err != nil {
-			return buf, nil
-		}
-	}
-}
 
 // Test that the JSON payload includes correct tool schema for OpenAI
 func TestOpenAIAdapter_ToolSchemaInPayload(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1082,25 +1020,18 @@ func TestOpenAIAdapter_ToolSchemaInPayload(t *testing.T) {
 	for range adapter.GenerateContent(context.Background(), req, true) {
 	}
 
-	if !strings.Contains(receivedBody, "my_func") {
-		t.Errorf("expected tool name in payload, got: %s", receivedBody)
+	if !strings.Contains(*body, "my_func") {
+		t.Errorf("expected tool name in payload, got: %s", *body)
 	}
 	var parsed map[string]any
-	if err := json.Unmarshal([]byte(receivedBody), &parsed); err != nil {
+	if err := json.Unmarshal([]byte(*body), &parsed); err != nil {
 		t.Fatalf("payload should be valid JSON: %v", err)
 	}
 }
 
 // Test OpenAI model role mapping
 func TestOpenAIAdapter_RoleMapping(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "sys", nil)
@@ -1116,27 +1047,20 @@ func TestOpenAIAdapter_RoleMapping(t *testing.T) {
 	}
 
 	// "model" and "" roles should map to "assistant"
-	if !strings.Contains(receivedBody, `"role":"assistant"`) {
-		t.Errorf("expected assistant role mapping, got: %s", receivedBody)
+	if !strings.Contains(*body, `"role":"assistant"`) {
+		t.Errorf("expected assistant role mapping, got: %s", *body)
 	}
-	if !strings.Contains(receivedBody, `"role":"user"`) {
-		t.Errorf("expected user role, got: %s", receivedBody)
+	if !strings.Contains(*body, `"role":"user"`) {
+		t.Errorf("expected user role, got: %s", *body)
 	}
-	if !strings.Contains(receivedBody, `"role":"system"`) {
-		t.Errorf("expected system role, got: %s", receivedBody)
+	if !strings.Contains(*body, `"role":"system"`) {
+		t.Errorf("expected system role, got: %s", *body)
 	}
 }
 
 // Test FunctionResponse emitting separate tool messages
 func TestOpenAIAdapter_FunctionResponseSeparateMessage(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1156,17 +1080,14 @@ func TestOpenAIAdapter_FunctionResponseSeparateMessage(t *testing.T) {
 	}
 
 	// FunctionResponse should produce a separate "tool" role message
-	if !strings.Contains(receivedBody, `"role":"tool"`) {
-		t.Errorf("expected tool role for FunctionResponse, got: %s", receivedBody)
+	if !strings.Contains(*body, `"role":"tool"`) {
+		t.Errorf("expected tool role for FunctionResponse, got: %s", *body)
 	}
-	if !strings.Contains(receivedBody, `"tool_call_id":"call_read"`) {
-		t.Errorf("expected tool_call_id, got: %s", receivedBody)
+	if !strings.Contains(*body, `"tool_call_id":"call_read"`) {
+		t.Errorf("expected tool_call_id, got: %s", *body)
 	}
 }
 
-// ============================================================================
-// Additional edge case tests for higher coverage
-// ============================================================================
 
 func TestAnthropicAdapter_DirectHTTPAdapterMarker(t *testing.T) {
 	a := NewAnthropicAdapter("model", "key", "", "", nil)
@@ -1249,15 +1170,7 @@ func TestAnthropicAdapter_StreamEndsWithoutFinal(t *testing.T) {
 		// No message_delta or message_stop - stream just ends
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1289,15 +1202,7 @@ func TestOpenAIAdapter_StreamEndsWithoutFinishReason(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1390,13 +1295,7 @@ func TestOpenAIAdapter_ServerError5xx(t *testing.T) {
 }
 
 func TestAnthropicAdapter_ToolWithNilSchema(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, body := captureBodyServer()
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1423,22 +1322,16 @@ func TestAnthropicAdapter_ToolWithNilSchema(t *testing.T) {
 	}
 
 	// Should use fallback schema
-	if !strings.Contains(receivedBody, "no_schema_tool") {
-		t.Errorf("expected tool name in body, got: %s", receivedBody)
+	if !strings.Contains(*body, "no_schema_tool") {
+		t.Errorf("expected tool name in body, got: %s", *body)
 	}
-	if !strings.Contains(receivedBody, "input_schema") {
-		t.Errorf("expected input_schema in body, got: %s", receivedBody)
+	if !strings.Contains(*body, "input_schema") {
+		t.Errorf("expected input_schema in body, got: %s", *body)
 	}
 }
 
 func TestAnthropicAdapter_ToolWithParametersField(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, body := captureBodyServer()
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1467,20 +1360,13 @@ func TestAnthropicAdapter_ToolWithParametersField(t *testing.T) {
 		}
 	}
 
-	if !strings.Contains(receivedBody, "param_tool") {
-		t.Errorf("expected tool name in body, got: %s", receivedBody)
+	if !strings.Contains(*body, "param_tool") {
+		t.Errorf("expected tool name in body, got: %s", *body)
 	}
 }
 
 func TestOpenAIAdapter_ToolWithNilSchema(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1506,8 +1392,8 @@ func TestOpenAIAdapter_ToolWithNilSchema(t *testing.T) {
 	for range adapter.GenerateContent(context.Background(), req, true) {
 	}
 
-	if !strings.Contains(receivedBody, "nil_schema") {
-		t.Errorf("expected tool name in body, got: %s", receivedBody)
+	if !strings.Contains(*body, "nil_schema") {
+		t.Errorf("expected tool name in body, got: %s", *body)
 	}
 }
 
@@ -1520,15 +1406,7 @@ func TestOpenAIAdapter_EmptyToolCallsChunk(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1590,12 +1468,7 @@ func TestOpenAIAdapter_RetryBudgetExhausted(t *testing.T) {
 }
 
 func TestAnthropicAdapter_AnthropicBaseURLAppend(t *testing.T) {
-	var capturedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, capturedPath := capturePathServer()
 	defer server.Close()
 
 	// Provide base URL without /v1/messages suffix
@@ -1612,18 +1485,13 @@ func TestAnthropicAdapter_AnthropicBaseURLAppend(t *testing.T) {
 		}
 	}
 
-	if capturedPath != "/v1/messages" {
-		t.Errorf("expected /v1/messages, got %s", capturedPath)
+	if *capturedPath != "/v1/messages" {
+		t.Errorf("expected /v1/messages, got %s", *capturedPath)
 	}
 }
 
 func TestAnthropicAdapter_BaseURLAlreadyHasMessages(t *testing.T) {
-	var capturedPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, capturedPath := capturePathServer()
 	defer server.Close()
 
 	baseURL := server.URL + "/v1/messages"
@@ -1640,8 +1508,8 @@ func TestAnthropicAdapter_BaseURLAlreadyHasMessages(t *testing.T) {
 		}
 	}
 
-	if capturedPath != "/v1/messages" {
-		t.Errorf("expected /v1/messages, got %s", capturedPath)
+	if *capturedPath != "/v1/messages" {
+		t.Errorf("expected /v1/messages, got %s", *capturedPath)
 	}
 }
 
@@ -1656,15 +1524,7 @@ func TestOpenAIAdapter_CommentLinesSkipped(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1694,14 +1554,7 @@ func TestOpenAIAdapter_CommentLinesSkipped(t *testing.T) {
 }
 
 func TestOpenAIAdapter_OpenAIFuncResponseWithNilParams(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1723,8 +1576,8 @@ func TestOpenAIAdapter_OpenAIFuncResponseWithNilParams(t *testing.T) {
 	for range adapter.GenerateContent(context.Background(), req, true) {
 	}
 
-	if !strings.Contains(receivedBody, "nil_params") {
-		t.Errorf("expected tool name in body, got: %s", receivedBody)
+	if !strings.Contains(*body, "nil_params") {
+		t.Errorf("expected tool name in body, got: %s", *body)
 	}
 }
 
@@ -1739,15 +1592,7 @@ func TestAnthropicAdapter_ContentBlockDeltaInvalidJSON(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1790,15 +1635,7 @@ func TestAnthropicAdapter_SSEMissingDataLine(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1830,15 +1667,7 @@ func TestAnthropicAdapter_ContentBlockStartNil(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1875,15 +1704,7 @@ func TestAnthropicAdapter_SSEDataLineMissingPrefix(t *testing.T) {
 		"event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprint(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := sseServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -1920,15 +1741,7 @@ func TestOpenAIAdapter_ToolCallStringInput(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -1968,15 +1781,7 @@ func TestOpenAIAdapter_PendingToolsFlushedOnPrematureEnd(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -2012,12 +1817,6 @@ func TestOpenAIAdapter_PendingToolsFlushedOnPrematureEnd(t *testing.T) {
 	}
 }
 
-// Test NewAdapter with Claude and genkit
-func TestNewAdapter_ClaudeWithGenkit(t *testing.T) {
-	// Can't create real genkit instance in test, so just verify the path exists
-	// by testing the nil genkit fallback (already tested)
-}
-
 // Test DebugLog with file write error
 func TestDebugLog_WriteAfterFileClosed(t *testing.T) {
 	debugOn = true
@@ -2039,15 +1838,7 @@ func TestOpenAIAdapter_ToolCallsWithGaps(t *testing.T) {
 		`data: [DONE]`,
 	}
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, event := range sseEvents {
-			fmt.Fprintln(w, event)
-			if f, ok := w.(http.Flusher); ok {
-				f.Flush()
-			}
-		}
-	}))
+	server := openAISSEServer(sseEvents)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -2083,13 +1874,7 @@ func TestOpenAIAdapter_ToolCallsWithGaps(t *testing.T) {
 
 // Test Anthropic adapter with empty system instruction parts
 func TestAnthropicAdapter_EmptySystemInstructionParts(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":"bad"}`)
-	}))
+	server, body := captureBodyServer()
 	defer server.Close()
 
 	adapter := NewAnthropicAdapter("model", "key", server.URL, "", nil)
@@ -2111,22 +1896,15 @@ func TestAnthropicAdapter_EmptySystemInstructionParts(t *testing.T) {
 	}
 
 	// Empty text parts should produce empty system prompt
-	if strings.Contains(receivedBody, "system") && !strings.Contains(receivedBody, `"text":""`) {
+	if strings.Contains(*body, "system") && !strings.Contains(*body, `"text":""`) {
 		// There should be no meaningful system blocks
-		t.Logf("body: %s", receivedBody)
+		t.Logf("body: %s", *body)
 	}
 }
 
 // Test OpenAI adapter with empty system instruction parts
 func TestOpenAIAdapter_EmptySystemInstructionParts(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -2145,21 +1923,14 @@ func TestOpenAIAdapter_EmptySystemInstructionParts(t *testing.T) {
 	}
 
 	// Empty text parts -> empty system prompt -> no system message
-	if strings.Contains(receivedBody, `"role":"system"`) {
-		t.Errorf("empty system instruction should not produce system message, got: %s", receivedBody)
+	if strings.Contains(*body, `"role":"system"`) {
+		t.Errorf("empty system instruction should not produce system message, got: %s", *body)
 	}
 }
 
 // Test OpenAI with nil FunctionDeclaration in tools
 func TestOpenAIAdapter_NilFunctionDeclaration(t *testing.T) {
-	var receivedBody string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bodyBytes, _ := ioReadAll(r.Body)
-		receivedBody = string(bodyBytes)
-		w.Header().Set("Content-Type", "text/event-stream")
-		fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"ok"}}]}`)
-		fmt.Fprintln(w, `data: [DONE]`)
-	}))
+	server, body := captureBodyOpenAISSE(okOpenAIResponse)
 	defer server.Close()
 
 	adapter := NewOpenAICompatibleAdapter("test-model", "test-key", server.URL, "", nil)
@@ -2181,8 +1952,8 @@ func TestOpenAIAdapter_NilFunctionDeclaration(t *testing.T) {
 	}
 
 	// Should not include any tools since declarations are nil
-	if strings.Contains(receivedBody, "function") {
-		t.Logf("body contains 'function': %s", receivedBody)
+	if strings.Contains(*body, "function") {
+		t.Logf("body contains 'function': %s", *body)
 	}
 }
 
