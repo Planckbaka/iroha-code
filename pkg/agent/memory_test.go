@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -341,7 +342,7 @@ func TestMemoryManager_SyncToAgentsMD(t *testing.T) {
 
 func TestMemoryManager_SyncFromAgentsMD(t *testing.T) {
 	dir := t.TempDir()
-	
+
 	// Create a pre-existing AGENTS.md with two memories
 	agentsContent := `# iroha-code
 
@@ -356,7 +357,7 @@ Some purpose text.
   - *Content*:
     This is a temporary fact.
 `
-	
+
 	original, _ := os.Getwd()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
@@ -424,7 +425,7 @@ func TestDreamConsolidatorGates(t *testing.T) {
 
 	// Setup initial dynamic learnings / entries
 	_ = mm.Save("test_mem1", "Desc 1", MemTypeUser, "Always write tests.")
-	
+
 	// Ensure we are not in Plan Mode
 	origMode := GlobalPermissionManager.GetMode()
 	defer func() { _ = GlobalPermissionManager.SetMode(origMode) }()
@@ -463,7 +464,7 @@ func TestDreamConsolidatorGates(t *testing.T) {
 	}
 	// Release lock acquired by direct ShouldConsolidate call so Consolidate can acquire it
 	dc.releaseLock(filepath.Join(dir, ".iroha", "memory"))
-	
+
 	// Test lock clean up (Gate 7)
 	// We call Consolidate which will run ShouldConsolidate, acquire lock, do nothing, and release lock
 	phases, err := dc.Consolidate(mm, true)
@@ -556,7 +557,7 @@ func TestDreamConsolidatorPhases(t *testing.T) {
 
 func TestMemoryDreamHandler(t *testing.T) {
 	dir := t.TempDir()
-	
+
 	// Set up memory manager in this temp directory
 	original, _ := os.Getwd()
 	if err := os.Chdir(dir); err != nil {
@@ -656,5 +657,65 @@ func TestSemanticMemoryConsolidation(t *testing.T) {
 	}
 	if !strings.Contains(mems[0].Content, "tab characters") {
 		t.Errorf("expected consolidated content to contain 'tab characters', got %q", mems[0].Content)
+	}
+}
+
+func TestMemoryManagerConcurrency(t *testing.T) {
+	dir := t.TempDir()
+	mm := newMemoryManagerInDir(t, dir)
+
+	// Save initial items
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("initial_pref_%d", i)
+		_ = mm.Save(name, "desc", MemTypeUser, "content")
+	}
+
+	const numGoroutines = 5
+	const iterations = 15
+	errChan := make(chan error, numGoroutines*2)
+
+	var wg sync.WaitGroup
+
+	// Writer goroutines - saving and updating
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				name := fmt.Sprintf("concur_pref_%d_%d", id, j)
+				saveErr := mm.Save(name, "concur desc", MemTypeUser, "concur content")
+				if saveErr != nil {
+					errChan <- saveErr
+					return
+				}
+				updateErr := mm.Update(name, "updated desc", MemTypeUser, "updated content")
+				if updateErr != nil {
+					errChan <- updateErr
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Reader goroutines - list, search, count, build prompt
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = mm.List()
+				_ = mm.Count()
+				_ = mm.GetDirs()
+				_ = mm.Search("updated")
+				_ = mm.BuildSystemPromptSection("concur")
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		t.Errorf("concurrency error: %v", err)
 	}
 }

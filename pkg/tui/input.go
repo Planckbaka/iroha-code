@@ -1,9 +1,5 @@
 package tui
 
-import (
-	"github.com/charmbracelet/bubbles/textinput"
-)
-
 // HistoryManager manages command history for CLI prompts
 type HistoryManager struct {
 	Items []string
@@ -50,14 +46,4 @@ func (hm *HistoryManager) Down() string {
 	}
 	hm.Index = len(hm.Items)
 	return ""
-}
-
-// SetupTextInput initializes the prompt textinput.Model
-func SetupTextInput() textinput.Model {
-	ti := textinput.New()
-	ti.Placeholder = "Enter prompt to guide the Agent..."
-	ti.Focus()
-	ti.CharLimit = 1000
-	ti.Width = 60
-	return ti
 }

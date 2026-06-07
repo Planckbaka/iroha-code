@@ -22,6 +22,10 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+      # Terminal writes and cleanup close calls where errors are not actionable
+      - linters:
+          - errcheck
+        source: "(fmt\\.Fprint|fmt\\.Fprintf|resp\\.Body\\.Close|term\\.Restore)"
 formatters:
   enable:
     - gofmt

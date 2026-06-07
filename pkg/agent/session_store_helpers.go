@@ -9,6 +9,7 @@ import (
 
 	"google.golang.org/adk/session"
 )
+
 func estimateTokens(textLen int) int {
 	if textLen <= 0 {
 		return 0

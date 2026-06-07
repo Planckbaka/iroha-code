@@ -91,7 +91,7 @@ func tokenizeCommand(command string) ([]string, error) {
 		case ch == '&' && i+1 < n && command[i+1] == '&':
 			return nil, fmt.Errorf("security sandbox blocked: command chaining '&&' detected in command")
 
-		case ch == ';' :
+		case ch == ';':
 			return nil, fmt.Errorf("security sandbox blocked: command separator ';' detected in command")
 
 		case ch == '>':

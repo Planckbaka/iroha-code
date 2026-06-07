@@ -16,6 +16,7 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
+
 func (hm *HookManager) RunHooks(event HookEvent, ctx HookContext) HookResult {
 	hm.mu.RLock()
 	defs := append([]HookDef{}, hm.hooks[string(event)]...)
@@ -30,7 +31,11 @@ func (hm *HookManager) RunHooks(event HookEvent, ctx HookContext) HookResult {
 
 		if def.Async {
 			go func(d HookDef, c HookContext) {
-		defer func() { if r := recover(); r != nil { LogError(CatSession, "async_hook_panic", fmt.Sprintf("Async hook panicked: %v", r), nil, nil) } }()
+				defer func() {
+					if r := recover(); r != nil {
+						LogError(CatSession, "async_hook_panic", fmt.Sprintf("Async hook panicked: %v", r), nil, nil)
+					}
+				}()
 				_ = hm.runOne(event, d, c)
 			}(def, ctx)
 			continue
@@ -247,12 +252,12 @@ or:
 		}
 	}
 
-		// Strict: extract only the first { ... } block to prevent multi-JSON injection.
-		if startIdx := strings.Index(responseText, "{"); startIdx >= 0 {
-			if endIdx := strings.LastIndex(responseText, "}"); endIdx > startIdx {
-				responseText = responseText[startIdx : endIdx+1]
-			}
+	// Strict: extract only the first { ... } block to prevent multi-JSON injection.
+	if startIdx := strings.Index(responseText, "{"); startIdx >= 0 {
+		if endIdx := strings.LastIndex(responseText, "}"); endIdx > startIdx {
+			responseText = responseText[startIdx : endIdx+1]
 		}
+	}
 
 	return parseJSONResult(event, []byte(responseText), durationMS, ctx, 0)
 }

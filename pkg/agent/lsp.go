@@ -11,8 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-
 )
 
 // loadLSPConfig loads LSP server configuration from ~/.iroha/lsp.json.
@@ -433,4 +431,3 @@ func (c *LSPClient) Close() {
 	}
 	c.mu.Unlock()
 }
-

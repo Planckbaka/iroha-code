@@ -16,7 +16,6 @@ import (
 	"iroha/pkg/config"
 )
 
-
 type WebFetchArgs struct {
 	URL     string `json:"url" description:"The HTTP(S) URL to fetch"`
 	Timeout int    `json:"timeout,omitempty" description:"Request timeout in seconds (default 20)"`
@@ -328,7 +327,6 @@ func searxngSearch(searxngURL, query string, count int) (WebSearchResult, error)
 
 	return WebSearchResult{Results: results}, nil
 }
-
 
 func registerWebTools(r *ToolRegistry) {
 	register(r, "web_fetch", "Fetch a web page by URL and return its content as text. Only HTTP/HTTPS is supported. Private IP ranges are blocked for security. Response body limited to 1MB.", WebFetchHandler)

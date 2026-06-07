@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -57,4 +58,77 @@ func GitCommit(msg string) error {
 		return fmt.Errorf("failed to git commit: %w", err)
 	}
 	return nil
+}
+
+// GitStageAndDiffPaths stages only the files edited by the current agent turn
+// and returns their staged diff. It never stages unrelated workspace changes.
+func GitStageAndDiffPaths(paths []string) (string, error) {
+	if len(paths) == 0 {
+		return "", nil
+	}
+	addArgs := append([]string{"add", "--"}, paths...)
+	if err := exec.Command("git", addArgs...).Run(); err != nil {
+		return "", fmt.Errorf("failed to stage agent-edited paths: %w", err)
+	}
+
+	diffArgs := append([]string{"diff", "--cached", "--"}, paths...)
+	var out bytes.Buffer
+	cmd := exec.Command("git", diffArgs...)
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to diff agent-edited paths: %w", err)
+	}
+	return out.String(), nil
+}
+
+// GitCommitPaths commits only the provided paths, leaving unrelated staged and
+// unstaged user changes untouched.
+func GitCommitPaths(msg string, paths []string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+	args := append([]string{"commit", "--only", "-m", msg, "--"}, paths...)
+	if err := exec.Command("git", args...).Run(); err != nil {
+		return fmt.Errorf("failed to commit agent-edited paths: %w", err)
+	}
+	return nil
+}
+
+// GitDirtyPathSet returns absolute paths that already contain user changes.
+func GitDirtyPathSet() map[string]bool {
+	dirty := make(map[string]bool)
+	for _, args := range [][]string{
+		{"diff", "--name-only"},
+		{"diff", "--cached", "--name-only"},
+		{"ls-files", "--others", "--exclude-standard"},
+	} {
+		output, err := exec.Command("git", args...).Output()
+		if err != nil {
+			continue
+		}
+		for _, path := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+			if path == "" {
+				continue
+			}
+			abs, err := filepath.Abs(path)
+			if err == nil {
+				dirty[abs] = true
+			}
+		}
+	}
+	return dirty
+}
+
+// FilterInitiallyDirtyPaths excludes files that already had user changes when
+// the turn began. Auto-commit must never absorb those changes.
+func FilterInitiallyDirtyPaths(paths []string, initiallyDirty map[string]bool) []string {
+	filtered := make([]string, 0, len(paths))
+	for _, path := range paths {
+		abs, err := filepath.Abs(path)
+		if err != nil || initiallyDirty[abs] {
+			continue
+		}
+		filtered = append(filtered, abs)
+	}
+	return filtered
 }

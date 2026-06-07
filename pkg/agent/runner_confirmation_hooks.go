@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-
 	"google.golang.org/adk/tool"
 )
+
 func (b *blockingConfirmationTool) runWithHooks(ctx tool.Context, args any, runnable adkRunnableTool) (map[string]any, error) {
 	startTime := time.Now()
 

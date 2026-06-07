@@ -32,7 +32,6 @@ type ScheduledNotification struct {
 	MissedAt   string `json:"missed_at,omitempty"`
 }
 
-
 // CronScheduler manages cron jobs and handles time-based triggers.
 type CronScheduler struct {
 	mu         sync.RWMutex
@@ -274,7 +273,6 @@ func (cs *CronScheduler) computeJitter(cronExpr string) int {
 	}
 	return 0
 }
-
 
 func (cs *CronScheduler) checkLoop() {
 	defer cs.wg.Done()

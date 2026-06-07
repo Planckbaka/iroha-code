@@ -1,15 +1,16 @@
 package tui
 
 import (
+	"bytes"
 	"errors"
-	"os"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"iroha/pkg/agent"
 
-	"github.com/charmbracelet/bubbletea"
+	xansi "github.com/charmbracelet/x/ansi"
 )
 
 func TestRenderConfirmCard(t *testing.T) {
@@ -31,77 +32,63 @@ func TestRenderConfirmCard(t *testing.T) {
 	}
 }
 
-func TestModelConfirmNavigation(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "", "")
-	m.State = stateConfirming
-	m.ConfirmSelectIndex = 0
+func TestRenderMarkdownCompactsShortReply(t *testing.T) {
+	raw := "你好！我是 Iroha，你的软件工程助手。有什么我可以帮你的吗？"
+	rendered := RenderMarkdownWithWidth(raw, 80)
+	lines := strings.Split(rendered, "\n")
 
-	// Move right
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
-	newM := res.(Model)
-	if newM.ConfirmSelectIndex != 1 {
-		t.Errorf("expected ConfirmSelectIndex = 1 after KeyRight, got %d", newM.ConfirmSelectIndex)
+	if len(lines) > 3 {
+		t.Fatalf("short reply rendered as %d lines: %q", len(lines), rendered)
 	}
-
-	// Move tab
-	res, _ = newM.Update(tea.KeyMsg{Type: tea.KeyTab})
-	newM = res.(Model)
-	if newM.ConfirmSelectIndex != 2 {
-		t.Errorf("expected ConfirmSelectIndex = 2 after KeyTab, got %d", newM.ConfirmSelectIndex)
-	}
-
-	// Move shift-tab (left)
-	res, _ = newM.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
-	newM = res.(Model)
-	if newM.ConfirmSelectIndex != 1 {
-		t.Errorf("expected ConfirmSelectIndex = 1 after KeyShiftTab, got %d", newM.ConfirmSelectIndex)
+	for _, line := range lines {
+		if strings.TrimSpace(xansi.Strip(line)) == "" {
+			t.Fatalf("short reply should not render blank padded lines: %q", rendered)
+		}
+		if width := xansi.StringWidth(line); width > 80 {
+			t.Fatalf("rendered line width = %d, want <= 80: %q", width, line)
+		}
 	}
 }
 
-func TestConfirmationListenerState(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "", "")
-	if !m.ConfirmationListenerActive {
-		t.Error("expected ConfirmationListenerActive = true initially")
+func TestRenderMarkdownUsesProvidedWidth(t *testing.T) {
+	rendered := RenderMarkdownWithWidth("alpha beta gamma delta epsilon", 14)
+	for _, line := range strings.Split(rendered, "\n") {
+		if width := xansi.StringWidth(line); width > 14 {
+			t.Fatalf("rendered line width = %d, want <= 14: %q", width, line)
+		}
+	}
+}
+
+func TestWelcomeUsesQuietAgentConsoleCopy(t *testing.T) {
+	rendered := xansi.Strip(RenderWelcomeCard(nil))
+	if !strings.Contains(rendered, "Iroha Code") {
+		t.Fatalf("welcome should identify the product, got %q", rendered)
+	}
+	if strings.Contains(rendered, "___") || strings.Contains(rendered, "Phew") {
+		t.Fatalf("welcome should avoid oversized logo/persona copy, got %q", rendered)
+	}
+}
+
+func TestConfirmComponentNavigation(t *testing.T) {
+	cc := NewConfirmComponent()
+	cc.selectIndex = 0
+
+	// Move right
+	cc.HandleInput(Key{Type: KeyRight})
+	if cc.selectIndex != 1 {
+		t.Errorf("expected selectIndex = 1 after KeyRight, got %d", cc.selectIndex)
 	}
 
-	// 1. Send ConfirmationRequiredMsg -> should set to false
-	res, cmd := m.Update(ConfirmationRequiredMsg{Prompt: "test prompt"})
-	m = res.(Model)
-	if m.ConfirmationListenerActive {
-		t.Error("expected ConfirmationListenerActive = false after ConfirmationRequiredMsg")
-	}
-	if cmd != nil {
-		t.Error("expected nil cmd from ConfirmationRequiredMsg")
-	}
-	if m.State != stateConfirming {
-		t.Errorf("expected state = stateConfirming, got %s", m.State)
+	// Move tab
+	cc.HandleInput(Key{Type: KeyTab})
+	if cc.selectIndex != 2 {
+		t.Errorf("expected selectIndex = 2 after KeyTab, got %d", cc.selectIndex)
 	}
 
-	// 2. Press Y -> should set to true and return a listenToConfirmationBridge cmd
-	res, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
-	m = res.(Model)
-	if !m.ConfirmationListenerActive {
-		t.Error("expected ConfirmationListenerActive = true after Y confirm")
-	}
-	if cmd == nil {
-		t.Error("expected listenToConfirmationBridge cmd, got nil")
-	}
-
-	// 3. Go back to inactive state
-	res, _ = m.Update(ConfirmationRequiredMsg{Prompt: "test prompt 2"})
-	m = res.(Model)
-	if m.ConfirmationListenerActive {
-		t.Error("expected ConfirmationListenerActive = false after second ConfirmationRequiredMsg")
-	}
-
-	// 4. Cancel turn using Ctrl+C -> should set to true and return a non-nil cmd restarting the listener
-	res, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
-	m = res.(Model)
-	if !m.ConfirmationListenerActive {
-		t.Error("expected ConfirmationListenerActive = true after Ctrl+C cancel")
-	}
-	if cmd == nil {
-		t.Error("expected non-nil cmd restarting listener after Ctrl+C cancel, got nil")
+	// Move shift-tab (left)
+	cc.HandleInput(Key{Type: KeyShiftTab})
+	if cc.selectIndex != 1 {
+		t.Errorf("expected selectIndex = 1 after KeyShiftTab, got %d", cc.selectIndex)
 	}
 }
 
@@ -120,254 +107,117 @@ func TestRenderToolErrorCard(t *testing.T) {
 	}
 }
 
-func TestNewModelBypassPermission(t *testing.T) {
-	// If initialMode is non-empty, State should be statePrompt instead of statePermissionSelect
-	mAuto := NewModel(nil, "test-session", false, "auto", "hello")
-	if mAuto.State != statePrompt {
-		t.Errorf("expected State to be statePrompt when initialMode is set, got %s", mAuto.State.String())
-	}
-	if mAuto.StartupPrompt != "hello" {
-		t.Errorf("expected StartupPrompt to be 'hello', got '%s'", mAuto.StartupPrompt)
-	}
-
-	mNone := NewModel(nil, "test-session", false, "", "")
-	if mNone.State != statePermissionSelect {
-		t.Errorf("expected State to be statePermissionSelect when initialMode is empty, got %s", mNone.State.String())
+func TestToolRowsUseTextLabels(t *testing.T) {
+	success := xansi.Strip(RenderToolSuccessCard("shell_run", map[string]any{"command": "go test ./pkg/tui"}, time.Millisecond))
+	if !strings.Contains(success, "[cmd]") || strings.Contains(success, "🐚") {
+		t.Fatalf("tool success row should use quiet text labels, got %q", success)
 	}
 }
 
 func TestRenderHelpAndCancel(t *testing.T) {
-	// Test RenderHelpDashboard
 	h := RenderHelpDashboard()
 	if !strings.Contains(h, "Iroha Code") || !strings.Contains(h, "Keyboard Shortcuts") {
 		t.Errorf("expected help dashboard to render help text, got:\n%s", h)
 	}
 
-	// Test RenderCancelCard
 	c := RenderCancelCard(1500 * time.Millisecond)
 	if !strings.Contains(c, "Session aborted by user") || !strings.Contains(c, "1.5s") {
 		t.Errorf("expected cancellation card to render elapsed duration, got:\n%s", c)
 	}
 }
 
-func TestMatchLocalPathsAndSafety(t *testing.T) {
-	// Temporarily switch CWD to project root to allow consistent relative path scans
-	oldCwd, err := os.Getwd()
-	if err == nil {
-		if strings.HasSuffix(oldCwd, "pkg/tui") {
-			_ = os.Chdir("../../")
-			defer func() { _ = os.Chdir(oldCwd) }()
-		}
-	}
-
-	m := NewModel(nil, "test-session", false, "", "")
-
-	// 1. Valid local matching
-	matches := m.matchLocalPaths("go.m")
-	if len(matches) == 0 {
-		t.Error("expected to match go.mod or go.sum under workspace root, got 0 matches")
-	}
-	matchedMod := false
-	for _, match := range matches {
-		if match == "go.mod" {
-			matchedMod = true
-		}
-	}
-	if !matchedMod {
-		t.Error("expected to match 'go.mod'")
-	}
-
-	// 2. Traversal escape safety check
-	escapedMatches := m.matchLocalPaths("../../../")
-	if len(escapedMatches) != 0 {
-		t.Errorf("safety boundary failure: expected 0 matches for traversal escape '../../..', got %d", len(escapedMatches))
-	}
-
-	// 3. Absolute path safety check
-	absMatches := m.matchLocalPaths("/etc/passwd")
-	if len(absMatches) != 0 {
-		t.Errorf("safety boundary failure: expected 0 matches for absolute path '/etc/passwd', got %d", len(absMatches))
-	}
-}
-
-func TestRenderPathCompletionBar(t *testing.T) {
-	items := []string{"pkg/agent/", "pkg/tui/"}
-
-	// Active selected index 0
-	bar0 := RenderPathCompletionBar(items, 0, 80)
-	if !strings.Contains(bar0, "▸ pkg/agent/") {
-		t.Error("expected active match pkg/agent/ to have active indicator ▸")
-	}
-
-	// Truncation check
-	longItems := []string{"path1/", "path2/", "path3/", "path4/", "path5/", "path6/"}
-	barTruncated := RenderPathCompletionBar(longItems, 0, 25)
-	if !strings.Contains(barTruncated, "...") {
-		t.Error("expected very narrow viewport to trigger truncation '...' indicator")
-	}
-}
-
-func TestModelPathCompletionFlow(t *testing.T) {
-	oldCwd, err := os.Getwd()
-	if err == nil {
-		if strings.HasSuffix(oldCwd, "pkg/tui") {
-			_ = os.Chdir("../../")
-			defer func() { _ = os.Chdir(oldCwd) }()
-		}
-	}
-
-	m := NewModel(nil, "test-session", false, "auto", "hello")
-	m.State = statePrompt
-	m.TextArea.SetValue("read go.")
-	m.TextArea.SetCursor(8)
-
-	// 1. Initial Tab Press -> Should trigger scan and auto-complete first match
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	newM := res.(Model)
-
-	if !newM.PathCompletionActive {
-		t.Error("expected PathCompletionActive to be true after first Tab press")
-	}
-	if len(newM.PathCompletionItems) == 0 {
-		t.Fatal("expected match list to be populated")
-	}
-	if !strings.HasPrefix(newM.TextArea.Value(), "read go.") {
-		t.Errorf("expected text area value to be completed to matching files, got: %s", newM.TextArea.Value())
-	}
-
-	// 2. Second Tab Press -> Should cycle to next match
-	t.Logf("[DEBUG] matches count: %d, items: %v", len(newM.PathCompletionItems), newM.PathCompletionItems)
-	t.Logf("[DEBUG] before second tab: index = %d, active = %v", newM.PathCompletionIndex, newM.PathCompletionActive)
-	prevVal := newM.TextArea.Value()
-	res, _ = newM.Update(tea.KeyMsg{Type: tea.KeyTab})
-	newM = res.(Model)
-	t.Logf("[DEBUG] after second tab: index = %d, active = %v, value = '%s'", newM.PathCompletionIndex, newM.PathCompletionActive, newM.TextArea.Value())
-
-	if newM.PathCompletionIndex != 1 {
-		t.Errorf("expected completion index to cycle to 1, got %d", newM.PathCompletionIndex)
-	}
-	if newM.TextArea.Value() == prevVal && len(newM.PathCompletionItems) > 1 {
-		t.Error("expected text area to cycle to next value, but it remained identical")
-	}
-
-	// 3. Typing other character -> Should reset completion cycle
-	res, _ = newM.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	newM = res.(Model)
-
-	if newM.PathCompletionActive {
-		t.Error("expected completion active state to reset on normal char input")
-	}
-}
-
-func TestConfirmationPromptAndDiffSplitting(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "", "")
+func TestConfirmComponentPromptAndDiffSplitting(t *testing.T) {
+	cc := NewConfirmComponent()
 
 	// 1. Prompt without diff marker
 	plainPrompt := "Allow writing file test.txt?"
-	res, _ := m.Update(ConfirmationRequiredMsg{Prompt: plainPrompt})
-	newM := res.(Model)
+	cc.SetPrompt(plainPrompt)
 
-	if newM.ConfirmationPrompt != plainPrompt {
-		t.Errorf("expected ConfirmationPrompt to be '%s', got '%s'", plainPrompt, newM.ConfirmationPrompt)
+	if cc.prompt != plainPrompt {
+		t.Errorf("expected prompt to be '%s', got '%s'", plainPrompt, cc.prompt)
 	}
-	if newM.ConfirmDiffText != "" {
-		t.Errorf("expected empty ConfirmDiffText, got '%s'", newM.ConfirmDiffText)
+	if cc.diffText != "" {
+		t.Errorf("expected empty diffText, got '%s'", cc.diffText)
 	}
-	if newM.ConfirmDiffActive {
-		t.Error("expected ConfirmDiffActive to be false initially")
+	if cc.diffActive {
+		t.Error("expected diffActive to be false initially")
 	}
 
 	// 2. Prompt with diff marker
 	diffContent := "+ added line\n- deleted line"
 	fullPromptWithDiff := "Allow writing file test.txt?\n\n\x1b[1;34m[File Changes (Diff)]:\x1b[0m\n" + diffContent
 
-	res, _ = m.Update(ConfirmationRequiredMsg{Prompt: fullPromptWithDiff})
-	newM = res.(Model)
+	cc.SetPrompt(fullPromptWithDiff)
 
-	if newM.ConfirmationPrompt != "Allow writing file test.txt?" {
-		t.Errorf("expected extracted ConfirmationPrompt to be 'Allow writing file test.txt?', got '%s'", newM.ConfirmationPrompt)
+	if cc.prompt != "Allow writing file test.txt?" {
+		t.Errorf("expected extracted prompt to be 'Allow writing file test.txt?', got '%s'", cc.prompt)
 	}
-	if newM.ConfirmDiffText != diffContent {
-		t.Errorf("expected extracted ConfirmDiffText to be '%s', got '%s'", diffContent, newM.ConfirmDiffText)
+	if cc.diffText != diffContent {
+		t.Errorf("expected extracted diffText to be '%s', got '%s'", diffContent, cc.diffText)
 	}
-	if newM.ConfirmDiffActive {
-		t.Error("expected ConfirmDiffActive to be false initially")
+	if cc.diffActive {
+		t.Error("expected diffActive to be false after SetPrompt")
 	}
 }
 
-func TestModelDiffToggleKeyAction(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "", "")
-	m.State = stateConfirming
-	m.ConfirmationPrompt = "Allow writing file test.txt?"
-	m.ConfirmDiffText = "+ added line\n- deleted line"
-	m.ConfirmDiffActive = false
+func TestConfirmComponentDiffToggleKeyAction(t *testing.T) {
+	cc := NewConfirmComponent()
+	cc.prompt = "Allow writing file test.txt?"
+	cc.diffText = "+ added line\n- deleted line"
+	cc.diffActive = false
 
-	// Pressing 'D' to toggle active state
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
-	newM := res.(Model)
+	// Press 'd' to toggle active state
+	cc.HandleInput(Key{Type: KeyRune, Rune: 'd'})
 
-	if !newM.ConfirmDiffActive {
-		t.Error("expected ConfirmDiffActive to be true after pressing 'd'")
-	}
-	if !strings.Contains(newM.Viewport.View(), "+ added line") {
-		t.Error("expected viewport to render the diff content when ConfirmDiffActive is true")
+	if !cc.diffActive {
+		t.Error("expected diffActive to be true after pressing 'd'")
 	}
 
-	// Pressing 'D' again to toggle off
-	res, _ = newM.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
-	newM = res.(Model)
+	// Press 'd' again to toggle off
+	cc.HandleInput(Key{Type: KeyRune, Rune: 'd'})
 
-	if newM.ConfirmDiffActive {
-		t.Error("expected ConfirmDiffActive to toggle back to false")
+	if cc.diffActive {
+		t.Error("expected diffActive to toggle back to false")
 	}
 }
 
 func TestGetEditableValue(t *testing.T) {
-	m := Model{}
+	cc := NewConfirmComponent()
 
-	// 1. Nil ActiveTool Args
-	if val := m.getEditableValue(); val != "" {
+	// 1. Nil active tool args
+	if val := cc.getEditableValue(); val != "" {
 		t.Errorf("expected empty string when active tool args is nil, got '%s'", val)
 	}
 
 	// 2. shell_run command extraction
-	m.ActiveTool = agent.ToolStatus{
-		Name: "shell_run",
-		Args: map[string]any{"command": "echo hello"},
-	}
-	if val := m.getEditableValue(); val != "echo hello" {
+	cc.activeToolArgs = map[string]any{"command": "echo hello"}
+	if val := cc.getEditableValue(); val != "echo hello" {
 		t.Errorf("expected extracted command to be 'echo hello', got '%s'", val)
 	}
 
 	// 3. file_write content extraction
-	m.ActiveTool = agent.ToolStatus{
-		Name: "file_write",
-		Args: map[string]any{"content": "print('hello')"},
-	}
-	if val := m.getEditableValue(); val != "print('hello')" {
+	cc.activeToolArgs = map[string]any{"content": "print('hello')"}
+	if val := cc.getEditableValue(); val != "print('hello')" {
 		t.Errorf("expected extracted content to be 'print(\\'hello\\')', got '%s'", val)
 	}
 }
 
 func TestConfirmationFiveOptions(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "auto", "hello")
-	m.State = stateConfirming
-	m.ConfirmSelectIndex = 0
+	cc := NewConfirmComponent()
+	cc.selectIndex = 0
 
 	// 1. Cycle right (Y -> N -> Always -> Edit -> Explain)
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyRight})
-	newM := res.(Model)
-	if newM.ConfirmSelectIndex != 1 {
-		t.Errorf("expected cycling right once to select index 1, got %d", newM.ConfirmSelectIndex)
+	cc.HandleInput(Key{Type: KeyRight})
+	if cc.selectIndex != 1 {
+		t.Errorf("expected cycling right once to select index 1, got %d", cc.selectIndex)
 	}
 
 	// 2. Cycle right 4 times (wrapping around back to Y)
 	for i := 0; i < 4; i++ {
-		res, _ = newM.Update(tea.KeyMsg{Type: tea.KeyRight})
-		newM = res.(Model)
+		cc.HandleInput(Key{Type: KeyRight})
 	}
-	if newM.ConfirmSelectIndex != 0 {
-		t.Errorf("expected wrapping around to 0, got %d", newM.ConfirmSelectIndex)
+	if cc.selectIndex != 0 {
+		t.Errorf("expected wrapping around to 0, got %d", cc.selectIndex)
 	}
 
 	// 3. RenderConfirmCardWithDiff rendering check for E Edit and ? Explain buttons
@@ -378,112 +228,188 @@ func TestConfirmationFiveOptions(t *testing.T) {
 }
 
 func TestStatsSlashCommand(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "auto", "hello")
-	m.State = statePrompt
-	m.TextArea.SetValue("/stats")
+	app := NewApp(nil, "test-session", false, "")
+	app.state = statePrompt
 
-	// Trigger stats slash command
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	newM := res.(Model)
-
-	if len(newM.History) == 0 {
-		t.Fatal("expected slash command execution to add logs to History")
+	// handleRawSlashCommand returns true only to signal program exit (e.g. /exit);
+	// /stats should not request exit.
+	if shouldExit := app.handleRawSlashCommand("/stats"); shouldExit {
+		t.Fatal("expected /stats slash command not to request exit")
 	}
 
-	lastLog := newM.History[len(newM.History)-1]
-	if !strings.Contains(lastLog, "Session Statistics & Telemetry") || !strings.Contains(lastLog, "Interaction Rounds") {
-		t.Errorf("expected History to contain telemetry details, got:\n%s", lastLog)
-	}
-}
-
-func TestTUI_GoalAndFrustration(t *testing.T) {
-	// 1. Goal Command test
-	m := NewModel(nil, "test-session", false, "auto", "")
-	m.State = statePrompt
-	m.TextArea.SetValue("/goal Create a backend server")
-
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	newM := res.(Model)
-
-	if !newM.IsGoalMode {
-		t.Error("expected IsGoalMode to be true after /goal")
-	}
-	if newM.GoalText != "Create a backend server" {
-		t.Errorf("expected GoalText 'Create a backend server', got '%s'", newM.GoalText)
+	if app.history.Len() == 0 {
+		t.Fatal("expected slash command execution to add logs to history")
 	}
 
-	// 2. Frustration loop detection test
-	m2 := NewModel(nil, "test-session", false, "auto", "")
-	m2.State = stateThinking
-
-	// Send 3 consecutive identical tool call records
-	for i := 0; i < 3; i++ {
-		// Start
-		res, _ = m2.Update(ToolStatusMsg{
-			Status: agent.ToolStatus{
-				Name:    "shell_run",
-				Args:    map[string]any{"command": "npm install"},
-				Running: true,
-			},
-		})
-		m2 = res.(Model)
-
-		// End
-		res, _ = m2.Update(ToolStatusMsg{
-			Status: agent.ToolStatus{
-				Name:    "shell_run",
-				Args:    map[string]any{"command": "npm install"},
-				Running: false,
-				Success: false,
-				Error:   errors.New("connection timeout"),
-			},
-		})
-		m2 = res.(Model)
-	}
-
-	if m2.State != stateFrustrationPause {
-		t.Errorf("expected state stateFrustrationPause after 3 identical failing tool calls, got %s", m2.State.String())
-	}
-
-	if m2.FrustrationSelectIndex != 0 {
-		t.Errorf("expected default select index 0, got %d", m2.FrustrationSelectIndex)
-	}
-
-	// 3. Navigation inside frustration pause state
-	res, _ = m2.Update(tea.KeyMsg{Type: tea.KeyRight})
-	m2 = res.(Model)
-	if m2.FrustrationSelectIndex != 1 {
-		t.Errorf("expected frustration index 1 after KeyRight, got %d", m2.FrustrationSelectIndex)
+	rendered := strings.Join(app.history.Render(120, 10000), "\n")
+	if !strings.Contains(rendered, "Session Statistics & Telemetry") || !strings.Contains(rendered, "Interaction Rounds") {
+		t.Errorf("expected history to contain telemetry details, got:\n%s", rendered)
 	}
 }
 
-func TestTUI_JSONValidation(t *testing.T) {
-	m := NewModel(nil, "test-session", false, "auto", "")
-	m.State = stateFrustrationPause
-	m.ConfirmEditActive = true
-	m.FrustrationSelectIndex = 0 // Edit Args
-	
-	// Case 1: Enter invalid JSON -> should fail validation and not exit edit state
-	m.TextArea.SetValue("{invalid json: }")
-	res, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	newM := res.(Model)
-	
-	if !newM.ConfirmEditActive {
-		t.Error("expected ConfirmEditActive to remain true when invalid JSON is submitted")
+func TestRawRendererFlickerFree(t *testing.T) {
+	var buf bytes.Buffer
+	renderer := NewRawRenderer(&buf)
+
+	lines1 := []string{"hello", "world"}
+	renderer.Draw(lines1, -1, 0)
+	out1 := buf.String()
+
+	if !strings.Contains(out1, "hello") || !strings.Contains(out1, "world") {
+		t.Error("expected first Draw to render all lines sequentially")
 	}
-	if newM.State != stateFrustrationPause {
-		t.Errorf("expected state to remain stateFrustrationPause, got %s", newM.State.String())
+
+	buf.Reset()
+	lines2 := []string{"hello", "there"}
+	renderer.Draw(lines2, -1, 0)
+	out2 := buf.String()
+
+	// Differential redraw should only update line 2
+	if strings.Contains(out2, "hello") {
+		t.Error("differential redraw should NOT redraw identical lines like 'hello'")
 	}
-	
-	// Case 2: Enter valid JSON -> should pass validation and exit edit state
-	newM.TextArea.SetValue(`{"command": "npm install --force"}`)
-	res2, _ := newM.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	newM2 := res2.(Model)
-	
-	if newM2.ConfirmEditActive {
-		t.Error("expected ConfirmEditActive to become false when valid JSON is submitted")
+	if !strings.Contains(out2, "there") {
+		t.Error("differential redraw should redraw differing lines like 'there'")
 	}
-	if newM2.State != stateThinking {
-		t.Errorf("expected state to transition to stateThinking, got %s", newM2.State.String())
+}
+
+func TestToolStreamLinesAccumulation(t *testing.T) {
+	// App TUI components accumulate streamed stdout across status updates.
+	app := NewApp(nil, "", false, "")
+	app.chat.SetActiveTool(agent.ToolStatus{
+		Name:        "shell_run",
+		Running:     true,
+		StreamLines: []string{"line1"},
+	})
+
+	app.handleToolStatus(agent.ToolStatus{
+		Name:        "shell_run",
+		Running:     true,
+		StreamLines: []string{"line2"},
+	})
+
+	if len(app.chat.activeTool.StreamLines) != 2 || app.chat.activeTool.StreamLines[0] != "line1" || app.chat.activeTool.StreamLines[1] != "line2" {
+		t.Errorf("expected App activeTool StreamLines to accumulate, got: %v", app.chat.activeTool.StreamLines)
+	}
+}
+
+func TestFinalizeTurnStoresRawAgentMarkdown(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.streamedText = "**finished**"
+
+	app.finalizeTurn()
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected finalized agent history entry")
+	}
+	if app.history.entries[0].Content != "**finished**" {
+		t.Fatalf("finalized history should store raw markdown, got %q", app.history.entries[0].Content)
+	}
+}
+
+func TestFinalizeTurnStoresRenderedErrorAsSystemEntry(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.lastError = errors.New("broken")
+
+	app.finalizeTurn()
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected error history entry")
+	}
+	if app.history.entries[0].Role != RoleSystem {
+		t.Fatalf("rendered error card should bypass agent markdown rendering, got role %q", app.history.entries[0].Role)
+	}
+}
+
+func TestCtrlCSeparatesRawAgentTextFromCancelCard(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = stateStreaming
+	app.streamedText = "**partial**"
+
+	app.handleKey(Key{Type: KeyCtrlC})
+
+	if app.history.Len() != 2 {
+		t.Fatalf("expected partial response and cancel card, got %d entries", app.history.Len())
+	}
+	agentEntry := app.history.entries[0]
+	cancelEntry := app.history.entries[1]
+	if agentEntry.Role != RoleAgent || agentEntry.Content != "**partial**" {
+		t.Fatalf("partial response should remain raw agent markdown, got %#v", agentEntry)
+	}
+	if cancelEntry.Role != RoleSystem {
+		t.Fatalf("cancel card should bypass agent markdown rendering, got role %q", cancelEntry.Role)
+	}
+}
+
+func TestToolStatusStoresRawPartialAgentMarkdown(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.streamedText = "**partial**"
+
+	app.handleToolStatus(agent.ToolStatus{Name: "shell_run", Success: true})
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected partial agent history entry")
+	}
+	if app.history.entries[0].Content != "**partial**" {
+		t.Fatalf("partial history should store raw markdown, got %q", app.history.entries[0].Content)
+	}
+}
+
+func TestSlashCommandStoresRawUserInput(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+
+	app.handleRawSlashCommand("/stats")
+
+	if len(app.history.entries) == 0 {
+		t.Fatal("expected slash command history entry")
+	}
+	if app.history.entries[0].Content != "/stats" {
+		t.Fatalf("slash command history should store raw input, got %q", app.history.entries[0].Content)
+	}
+}
+
+func TestAppRenderUsesTerminalHeightViewport(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+	app.width = 80
+	app.height = 12
+	for i := 0; i < 30; i++ {
+		app.history.Add(HistoryEntry{Role: RoleSystem, Content: fmt.Sprintf("line-%02d", i)})
+	}
+
+	lines := app.Render()
+	if len(lines) > app.height {
+		t.Fatalf("rendered %d lines for terminal height %d", len(lines), app.height)
+	}
+	joined := strings.Join(lines, "\n")
+	if strings.Contains(joined, "line-00") {
+		t.Fatal("viewport rendered oldest content while positioned at bottom")
+	}
+
+	app.HandleEvent(Key{Type: KeyPgUp})
+	scrolled := strings.Join(app.Render(), "\n")
+	if scrolled == joined {
+		t.Fatal("PageUp did not change the visible App frame")
+	}
+
+	app.HandleEvent(Key{Type: KeyWheelDown})
+	wheelDown := strings.Join(app.Render(), "\n")
+	if wheelDown == scrolled {
+		t.Fatal("mouse wheel down did not change the visible App frame")
+	}
+}
+
+func TestAppRenderClipsSlashMenuToTerminalHeight(t *testing.T) {
+	app := NewApp(nil, "", false, "")
+	app.state = statePrompt
+	app.width = 80
+	app.height = 8
+	app.focus.Take(FocusPrompt)
+	app.slash.Update("/")
+
+	lines := app.Render()
+	if len(lines) > app.height {
+		t.Fatalf("rendered %d lines with slash menu for terminal height %d", len(lines), app.height)
 	}
 }

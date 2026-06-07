@@ -399,7 +399,7 @@ func TestSelfHealingPostEditHook(t *testing.T) {
 	func BrokenGoFunction() {
 		invalid_token_here!!!
 	}`
-	
+
 	if err := os.WriteFile(brokenFile, []byte(brokenContent), 0644); err != nil {
 		t.Fatalf("failed to write broken file: %v", err)
 	}
@@ -539,6 +539,69 @@ func TestDynamicLLMDelegator_AddTokens(t *testing.T) {
 	d.AddTokens(50) // should not panic
 }
 
+func TestDynamicLLMDelegator_RetriesDirectHTTPBeforeOutput(t *testing.T) {
+	t.Setenv("IROHA_MIN_RETRY_DELAY_MS", "0")
+	t.Setenv("IROHA_MAX_RETRIES", "2")
+	llm.ResetRetryBudget()
+
+	retryModel := &retryingDirectHTTPModel{
+		responses: []retryModelStep{
+			{err: errors.New("anthropic API error: [1302][rate limit]")},
+			{text: "ok"},
+		},
+	}
+	d := &DynamicLLMDelegator{currentModel: retryModel}
+
+	var got strings.Builder
+	for resp, err := range d.GenerateContent(context.Background(), &model.LLMRequest{}, true) {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if resp != nil && resp.Content != nil {
+			for _, p := range resp.Content.Parts {
+				if p.Text != "" {
+					got.WriteString(p.Text)
+				}
+			}
+		}
+	}
+
+	if retryModel.calls != 2 {
+		t.Fatalf("expected 2 calls after retry, got %d", retryModel.calls)
+	}
+	if !strings.Contains(got.String(), "API Retry") || !strings.Contains(got.String(), "ok") {
+		t.Fatalf("expected retry notice and final text, got %q", got.String())
+	}
+}
+
+func TestDynamicLLMDelegator_DoesNotRetryDirectHTTPAfterOutput(t *testing.T) {
+	t.Setenv("IROHA_MIN_RETRY_DELAY_MS", "0")
+	t.Setenv("IROHA_MAX_RETRIES", "2")
+	llm.ResetRetryBudget()
+
+	retryModel := &retryingDirectHTTPModel{
+		responses: []retryModelStep{
+			{text: "partial", err: errors.New("connection reset by peer")},
+			{text: "should not be called"},
+		},
+	}
+	d := &DynamicLLMDelegator{currentModel: retryModel}
+
+	var gotErr error
+	for _, err := range d.GenerateContent(context.Background(), &model.LLMRequest{}, true) {
+		if err != nil {
+			gotErr = err
+		}
+	}
+
+	if gotErr == nil {
+		t.Fatal("expected mid-stream error to surface")
+	}
+	if retryModel.calls != 1 {
+		t.Fatalf("expected no retry after output, got %d calls", retryModel.calls)
+	}
+}
+
 // mockLLMForDelegator is a minimal model.LLM implementation for testing.
 type mockLLMForDelegator struct {
 	name string
@@ -549,9 +612,7 @@ func (m *mockLLMForDelegator) GenerateContent(ctx context.Context, req *model.LL
 	return func(yield func(*model.LLMResponse, error) bool) {}
 }
 
-type nonTokenTrackerModel struct {
-	mockLLMForDelegator
-}
+type nonTokenTrackerModel struct{}
 
 func (m *nonTokenTrackerModel) Name() string { return "non-tracker" }
 func (m *nonTokenTrackerModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
@@ -568,3 +629,37 @@ func (m *mockTokenTracker) GenerateContent(ctx context.Context, req *model.LLMRe
 }
 func (m *mockTokenTracker) CumulativeTokens() int { return m.tokens }
 func (m *mockTokenTracker) AddTokens(n int)       { m.tokens += n }
+
+type retryModelStep struct {
+	text string
+	err  error
+}
+
+type retryingDirectHTTPModel struct {
+	calls     int
+	responses []retryModelStep
+}
+
+func (m *retryingDirectHTTPModel) Name() string       { return "direct-test" }
+func (m *retryingDirectHTTPModel) DirectHTTPAdapter() {}
+func (m *retryingDirectHTTPModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		m.calls++
+		idx := m.calls - 1
+		if idx >= len(m.responses) {
+			return
+		}
+		step := m.responses[idx]
+		if step.text != "" {
+			if !yield(&model.LLMResponse{
+				Content: &genai.Content{Role: "model", Parts: []*genai.Part{{Text: step.text}}},
+				Partial: true,
+			}, nil) {
+				return
+			}
+		}
+		if step.err != nil {
+			yield(nil, step.err)
+		}
+	}
+}

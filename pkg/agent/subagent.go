@@ -185,10 +185,9 @@ func (sm *SubagentManager) RunSubagent(ctx context.Context, spec SubagentSpec) (
 	}
 
 	// 6. Run the subagent execution loop synchronously, listening to events and logging
-	runConfig := runner.WithStateDelta(nil)
 	events := subRunner.Run(subCtx, "subagent-user", spec.Name+"-sync-session", userMsg, agent.RunConfig{
 		StreamingMode: agent.StreamingModeSSE,
-	}, runConfig)
+	})
 
 	// Open detailed session log file
 	logsDir := ResolveSubagentLogsDir()

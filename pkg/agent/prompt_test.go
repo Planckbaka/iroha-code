@@ -357,9 +357,9 @@ func TestMaybeCached_HashChanged(t *testing.T) {
 
 func TestFindProjectRoot(t *testing.T) {
 	tests := []struct {
-		name      string
-		setup     func(tmpDir string) string // returns workdir
-		wantRoot  func(tmpDir string) string // returns expected root
+		name     string
+		setup    func(tmpDir string) string // returns workdir
+		wantRoot func(tmpDir string) string // returns expected root
 	}{
 		{
 			"git_marker",
@@ -520,5 +520,32 @@ func TestBuild_DelegatesToBuildWithPrompt(t *testing.T) {
 	}
 	if !strings.Contains(result, "You are Iroha") {
 		t.Error("Build() should contain core persona")
+	}
+}
+
+func TestSanitizeADKStatePlaceholders(t *testing.T) {
+	input := strings.Join([]string{
+		"Example: <button onClick={handleSubmit}>Run</button>",
+		"Keep optional placeholder {missing?}",
+		"Protect prefixed state {user:name}",
+		"Leave object literal { key: value } alone",
+	}, "\n")
+
+	result := sanitizeADKStatePlaceholders(input)
+
+	if strings.Contains(result, "{handleSubmit}") {
+		t.Fatal("expected literal handler braces to be sanitized")
+	}
+	if !strings.Contains(result, "{handleSubmit /* literal */}") {
+		t.Fatalf("expected sanitized handler placeholder, got: %s", result)
+	}
+	if !strings.Contains(result, "{user:name /* literal */}") {
+		t.Fatalf("expected prefixed state-like placeholder to be sanitized, got: %s", result)
+	}
+	if !strings.Contains(result, "{missing?}") {
+		t.Fatalf("optional placeholders should be preserved, got: %s", result)
+	}
+	if !strings.Contains(result, "{ key: value }") {
+		t.Fatalf("object literals should be preserved, got: %s", result)
 	}
 }

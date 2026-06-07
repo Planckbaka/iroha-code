@@ -41,6 +41,14 @@ type TokenTracker interface {
 	AddTokens(n int)
 }
 
+// SystemPromptUpdater allows the active system prompt to be refreshed at runtime.
+// This is what makes the s10 dynamic prompt pipeline actually take effect: the
+// delegator rebuilds the prompt each turn and pushes it via SetSystemPrompt so
+// live context (time, tasks, memory, identity) reaches the model.
+type SystemPromptUpdater interface {
+	SetSystemPrompt(prompt string)
+}
+
 // NewAdapter creates a new model.LLM based on the provider, model name, apiKey, optional baseURL,
 // a systemPrompt string, apiFormat (openai or anthropic), and runtime hooks.
 func NewAdapter(g *genkit.Genkit, provider ProviderType, modelName string, apiKey string, baseURL string, systemPrompt string, apiFormat APIFormat, hooks AdapterHooks) (model.LLM, error) {

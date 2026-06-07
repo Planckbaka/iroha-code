@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"google.golang.org/adk/tool"
 	"google.golang.org/adk/tool/functiontool"
@@ -124,7 +125,15 @@ func checkShellCommandSandbox(ctx context.Context, command string) error {
 
 	tokens, err := tokenizeCommand(command)
 	if err != nil {
-		return err
+		if strings.Contains(err.Error(), "pipe") {
+			if pipelineTokens, ok := tokenizeAllowedReadOnlyPipeline(command); ok {
+				tokens = pipelineTokens
+			} else {
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 
 	for _, w := range tokens {
@@ -161,6 +170,135 @@ func checkShellCommandSandbox(ctx context.Context, command string) error {
 		}
 	}
 	return nil
+}
+
+func tokenizeAllowedReadOnlyPipeline(command string) ([]string, bool) {
+	segments, ok := splitShellPipeline(command)
+	if !ok || len(segments) != 2 {
+		return nil, false
+	}
+
+	left, err := tokenizeCommand(segments[0])
+	if err != nil || len(left) == 0 {
+		return nil, false
+	}
+	right, err := tokenizeCommand(segments[1])
+	if err != nil || len(right) == 0 {
+		return nil, false
+	}
+
+	if !isReadOnlyProducer(left[0]) || !isHeadLimiter(right) {
+		return nil, false
+	}
+
+	tokens := make([]string, 0, len(left)+len(right))
+	tokens = append(tokens, left...)
+	tokens = append(tokens, right...)
+	return tokens, true
+}
+
+func splitShellPipeline(command string) ([]string, bool) {
+	var segments []string
+	var buf strings.Builder
+	var quote byte
+	escaped := false
+
+	for i := 0; i < len(command); i++ {
+		ch := command[i]
+		if escaped {
+			buf.WriteByte(ch)
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			buf.WriteByte(ch)
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if ch == quote {
+				quote = 0
+			}
+			buf.WriteByte(ch)
+			continue
+		}
+		if ch == '\'' || ch == '"' {
+			quote = ch
+			buf.WriteByte(ch)
+			continue
+		}
+		if ch == '|' {
+			if i+1 < len(command) && command[i+1] == '|' {
+				return nil, false
+			}
+			segment := strings.TrimSpace(buf.String())
+			if segment == "" {
+				return nil, false
+			}
+			segments = append(segments, segment)
+			buf.Reset()
+			continue
+		}
+		buf.WriteByte(ch)
+	}
+
+	if quote != 0 || escaped {
+		return nil, false
+	}
+	segment := strings.TrimSpace(buf.String())
+	if segment == "" {
+		return nil, false
+	}
+	segments = append(segments, segment)
+	return segments, true
+}
+
+func isReadOnlyProducer(cmd string) bool {
+	switch filepath.Base(cmd) {
+	case "find", "rg", "grep", "ls", "git":
+		return true
+	default:
+		return false
+	}
+}
+
+func isHeadLimiter(tokens []string) bool {
+	if filepath.Base(tokens[0]) != "head" {
+		return false
+	}
+	if len(tokens) == 1 {
+		return true
+	}
+	if len(tokens) > 3 {
+		return false
+	}
+	for i := 1; i < len(tokens); i++ {
+		t := tokens[i]
+		if t == "-n" {
+			if i+1 >= len(tokens) || !isPositiveDecimal(tokens[i+1]) {
+				return false
+			}
+			i++
+			continue
+		}
+		if strings.HasPrefix(t, "-") && len(t) > 1 && isPositiveDecimal(t[1:]) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isPositiveDecimal(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // containsEnvVarExpansion checks if a token contains shell environment variable patterns
@@ -217,4 +355,68 @@ func GetSWETools() ([]tool.Tool, error) {
 	}
 
 	return r.tools, nil
+}
+
+// Tool pool rebuild and change-detection functions.
+// These enable hot-reloading MCP plugins at runtime via /mcp reload.
+
+// toolPoolVersion tracks how many times the tool pool has been rebuilt.
+var toolPoolVersion int
+
+// ToolPoolVersion returns the current tool pool version counter.
+func ToolPoolVersion() int {
+	return toolPoolVersion
+}
+
+// RebuildToolPool re-discovers MCP tools from GlobalMCPRouter and returns tool count.
+func RebuildToolPool() (int, error) {
+	router := GlobalMCPRouter
+	if router == nil {
+		return 0, nil
+	}
+
+	discovered, err := router.DiscoverTools()
+	if err != nil {
+		return 0, fmt.Errorf("tool pool rebuild failed: %w", err)
+	}
+
+	toolPoolVersion++
+	return len(discovered), nil
+}
+
+var (
+	pluginsMtimeInit bool
+	pluginsMtime     time.Time
+)
+
+// CheckPluginsFileChanged reports whether .iroha/plugins.json was modified
+// since the last call. The first call seeds the baseline without reporting change.
+func CheckPluginsFileChanged() bool {
+	wd, err := os.Getwd()
+	if err != nil {
+		wd = "."
+	}
+	root := findProjectRoot(wd)
+	p := filepath.Join(root, ".iroha", "plugins.json")
+
+	info, err := os.Stat(p)
+	if err != nil {
+		if !pluginsMtimeInit {
+			pluginsMtimeInit = true
+		}
+		return false
+	}
+
+	mt := info.ModTime()
+	if !pluginsMtimeInit {
+		pluginsMtime = mt
+		pluginsMtimeInit = true
+		return false
+	}
+
+	if !mt.Equal(pluginsMtime) {
+		pluginsMtime = mt
+		return true
+	}
+	return false
 }

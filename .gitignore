@@ -10,3 +10,6 @@ scratch/
 .tasks/
 .runtime-tasks/
 .worktrees/
+worktrees/
+*.out
+coverage.*

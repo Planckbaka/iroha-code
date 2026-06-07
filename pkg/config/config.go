@@ -58,19 +58,28 @@ type Config struct {
 }
 
 // GetConfigPath returns the absolute path to user configuration file (~/.iroha.json)
-func GetConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".iroha.json")
+func GetConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	return filepath.Join(home, ".iroha.json"), nil
 }
 
 // LoadConfig loads or initializes configuration from ~/.iroha.json
 func LoadConfig() (*Config, error) {
-	path := GetConfigPath()
+	path, err := GetConfigPath()
+	if err != nil {
+		return nil, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Check if old config file (~/.go-claude.json) exists for backward compatibility and auto-migrate
-			home, _ := os.UserHomeDir()
+			home, homeErr := os.UserHomeDir()
+			if homeErr != nil {
+				return nil, fmt.Errorf("cannot determine home directory: %w", homeErr)
+			}
 			oldPath := filepath.Join(home, ".go-claude.json")
 			if oldData, oldErr := os.ReadFile(oldPath); oldErr == nil {
 				fmt.Printf("  Detected legacy config file %s, auto-migrating to %s...\n", oldPath, path)
@@ -118,7 +127,10 @@ func LoadConfig() (*Config, error) {
 
 // SaveConfig persists the configurations to ~/.iroha.json
 func SaveConfig(cfg *Config) error {
-	path := GetConfigPath()
+	path, err := GetConfigPath()
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err

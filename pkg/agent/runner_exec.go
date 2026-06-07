@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"runtime/debug"
 	"strings"
+	"sync/atomic"
 
+	"github.com/google/uuid"
 	"google.golang.org/adk/agent"
 	"google.golang.org/adk/model"
-	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/genai"
 )
@@ -17,10 +18,31 @@ import (
 func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt string, onEvent func(*session.Event), onError func(error), onDone func()) {
 	cr.deps.ToolCircuitBreaker.Reset()
 	cr.deps.Logger.SetSessionID(sessionID)
+	initiallyDirtyPaths := GitDirtyPathSet()
+
+	runID := uuid.NewString()
+	var runSequence atomic.Uint64
+	var runTerminal atomic.Bool
+	emitRunEvent := func(eventType string, metadata map[string]any) {
+		cr.deps.Logger.LogRunEvent(RunEvent{
+			SessionID: sessionID,
+			RunID:     runID,
+			Sequence:  runSequence.Add(1),
+			Type:      eventType,
+			Metadata:  metadata,
+		})
+	}
+	emitTerminalRunEvent := func(eventType string, metadata map[string]any) {
+		if runTerminal.CompareAndSwap(false, true) {
+			emitRunEvent(eventType, metadata)
+		}
+	}
+	emitRunEvent("run.accepted", map[string]any{"user_id": userID})
 
 	LogAudit(CatUserInput, "user_prompt", "User submitted a prompt to the agent", map[string]any{
 		"user_id":    userID,
 		"session_id": sessionID,
+		"run_id":     runID,
 		"prompt":     prompt,
 	})
 
@@ -28,16 +50,23 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 	cr.deps.Bridge.Reset()
 	go func() {
 		<-ctx.Done()
+		if runTerminal.Load() {
+			return
+		}
+		emitRunEvent("run.cancel_requested", map[string]any{"reason": ctx.Err().Error()})
 		cr.deps.Bridge.Cancel()
 	}()
 
 	go func() {
+		emitRunEvent("run.started", nil)
 		defer func() {
 			if r := recover(); r != nil {
 				rollbackPendingEdits()
 				err := fmt.Errorf("panic in agent execution: %v\n%s", r, debug.Stack())
+				emitTerminalRunEvent("run.failed", map[string]any{"reason": "panic", "error": err.Error()})
 				LogError(CatSystem, "runner_panic", "Agent execution panicked", err, map[string]any{
 					"session_id": sessionID,
+					"run_id":     runID,
 				})
 				onError(err)
 				onDone()
@@ -85,8 +114,10 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 			SessionID: sessionID,
 		})
 		if hookUserResult.Blocked {
+			emitTerminalRunEvent("run.failed", map[string]any{"reason": "prompt_blocked", "error": hookUserResult.BlockReason})
 			LogAudit(CatUserInput, "user_prompt_blocked", "User prompt blocked by hook", map[string]any{
 				"session_id": sessionID,
+				"run_id":     runID,
 				"reason":     hookUserResult.BlockReason,
 			})
 			onError(fmt.Errorf("prompt blocked by hook: %s", hookUserResult.BlockReason))
@@ -105,20 +136,23 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 			},
 		}
 
-		runConfig := runner.WithStateDelta(nil)
 		events := cr.adkRunner.Run(ctx, userID, sessionID, userMsg, agent.RunConfig{
 			StreamingMode: agent.StreamingModeSSE,
-		}, runConfig)
+		})
 
 		var responseTextLen int
 		for ev, err := range events {
 			if ctx.Err() != nil {
 				rollbackPendingEdits()
+				emitTerminalRunEvent("run.cancelled", map[string]any{"reason": ctx.Err().Error()})
+				onDone()
 				return
 			}
 			if err != nil {
+				emitTerminalRunEvent("run.failed", map[string]any{"reason": "event_stream", "error": err.Error()})
 				LogError(CatSystem, "runner_event_error", "Error received during agent run loop event streaming", err, map[string]any{
 					"session_id": sessionID,
+					"run_id":     runID,
 				})
 				onError(err)
 				return
@@ -142,15 +176,18 @@ func (cr *CustomRunner) Execute(ctx context.Context, userID, sessionID, prompt s
 			SessionID:      sessionID,
 		})
 
+		editedPaths := FilterInitiallyDirtyPaths(pendingEditPaths(), initiallyDirtyPaths)
 		commitPendingEdits()
 
 		LogInfo(CatSystem, "runner_complete", "Agent execution completed successfully", map[string]any{
 			"session_id": sessionID,
+			"run_id":     runID,
 		})
 
-		// Trigger Aider-style Git Auto-Commit if repository has staged/unstaged changes
-		if hasChanges, err := GitHasChanges(); err == nil && hasChanges {
-			if diffStr, err := GitGetStagedDiff(); err == nil && strings.TrimSpace(diffStr) != "" {
+		// Auto-commit only files modified through this turn's edit tools. User
+		// changes elsewhere in the worktree must never be staged or committed.
+		if len(editedPaths) > 0 {
+			if diffStr, err := GitStageAndDiffPaths(editedPaths); err == nil && strings.TrimSpace(diffStr) != "" {
 				if len(diffStr) > 8000 {
 					diffStr = diffStr[:8000]
 				}
@@ -191,7 +228,7 @@ Requirements:
 				}
 
 				fullCommitMsg := fmt.Sprintf("[iroha] %s", commitMsg)
-				if commitErr := GitCommit(fullCommitMsg); commitErr == nil {
+				if commitErr := GitCommitPaths(fullCommitMsg, editedPaths); commitErr == nil {
 					LogInfo(CatSystem, "git_auto_commit", fmt.Sprintf("Aider-style Git auto-commit completed: %s", fullCommitMsg), map[string]any{
 						"session_id": sessionID,
 						"msg":        fullCommitMsg,
@@ -209,6 +246,7 @@ Requirements:
 			SessionID: sessionID,
 		})
 
+		emitTerminalRunEvent("run.completed", map[string]any{"response_length": responseTextLen})
 		onDone()
 	}()
 }

@@ -2,10 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"iter"
 	"os"
+	"strings"
 	"sync"
+	"time"
 
 	"iroha/pkg/llm"
 
@@ -18,6 +21,7 @@ import (
 	"google.golang.org/adk/runner"
 	"google.golang.org/adk/session"
 	"google.golang.org/adk/tool"
+	"google.golang.org/genai"
 )
 
 // runnerHooks implements llm.AdapterHooks using an injected TodoManager.
@@ -26,6 +30,9 @@ type runnerHooks struct {
 }
 
 func (h runnerHooks) NagReminder() string {
+	if h.todo == nil {
+		return ""
+	}
 	if h.todo.RoundsSinceUpdate() >= 3 {
 		return "📌 [System] To ensure continuity of subsequent code changes, please update your todo plan progress before executing the current step."
 	}
@@ -33,7 +40,9 @@ func (h runnerHooks) NagReminder() string {
 }
 
 func (h runnerHooks) NoteRound() {
-	h.todo.NoteRoundWithoutUpdate()
+	if h.todo != nil {
+		h.todo.NoteRoundWithoutUpdate()
+	}
 }
 
 func buildSystemPrompt() string {
@@ -59,11 +68,215 @@ func (d *DynamicLLMDelegator) Name() string {
 	return d.currentModel.Name()
 }
 
+// compactionTriggerTokens is the estimated-token threshold above which the
+// delegator runs CompactContents before delegating to the underlying model.
+// Mirrors the s06 "auto-compact" lever (~50k tokens of active context).
+const compactionTriggerTokens = 50000
+
+// estimateContentsTokens returns a rough token estimate for a slice of Contents
+// by summing text/JSON-arg byte length and dividing by 4.
+func estimateContentsTokens(contents []*genai.Content) int {
+	total := 0
+	for _, c := range contents {
+		if c == nil {
+			continue
+		}
+		for _, p := range c.Parts {
+			if p == nil {
+				continue
+			}
+			total += len(p.Text)
+			if p.FunctionCall != nil {
+				if b, err := json.Marshal(p.FunctionCall.Args); err == nil {
+					total += len(b)
+				}
+			}
+			if p.FunctionResponse != nil {
+				if b, err := json.Marshal(p.FunctionResponse.Response); err == nil {
+					total += len(b)
+				}
+			}
+		}
+	}
+	return estimateTokens(total)
+}
+
 func (d *DynamicLLMDelegator) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
 	d.mu.RLock()
 	m := d.currentModel
 	d.mu.RUnlock()
-	return m.GenerateContent(ctx, req, stream)
+
+	// s10 System Prompt: the dynamic pipeline only takes effect if the prompt is
+	// rebuilt each turn and re-pushed to the adapter. We update the live message
+	// count first (drives <identity> re-injection) then assemble a fresh prompt
+	// so time/tasks/teammates/inbox/safety/memory all reflect current state.
+	if req != nil {
+		GlobalMessageCount = len(req.Contents)
+		if updater, ok := m.(llm.SystemPromptUpdater); ok {
+			builder := NewSystemPromptBuilder()
+			userPrompt := latestUserText(req.Contents)
+			updater.SetSystemPrompt(builder.BuildWithPrompt(userPrompt))
+		}
+	}
+
+	// s06 Context Compact: relocate detail out of the active window before it
+	// overflows. Gated on a token estimate so small turns skip the deep copy.
+	// The underlying model `m` (not the delegator) is passed for summarization
+	// to avoid re-entering compaction recursively.
+	if req != nil && len(req.Contents) > 0 {
+		if len(req.Contents) > 12 || estimateContentsTokens(req.Contents) > compactionTriggerTokens {
+			sessionID := GlobalLogger.CurrentSessionID()
+			req.Contents = CompactContents(req.Contents, sessionID, m)
+		}
+	}
+
+	// s11 Error Recovery: a "prompt too long" / context-length-exceeded error
+	// surfaces from the provider BEFORE any content streams, so it is safe to
+	// react by force-compacting the window and retrying once. Mid-stream errors
+	// are NOT retried here — replaying would duplicate already-emitted text.
+	return d.generateWithRetryRecovery(ctx, req, stream, m)
+}
+
+// generateWithRetryRecovery wraps the underlying model's response stream and
+// retries safe pre-output failures. Context-length errors still get one
+// force-compaction attempt; transient direct-HTTP errors use the shared API
+// retry budget and Claude Code-like user-visible retry notices. Any error after
+// output is passed through to avoid duplicating streamed text or tool calls.
+func (d *DynamicLLMDelegator) generateWithRetryRecovery(ctx context.Context, req *model.LLMRequest, stream bool, m model.LLM) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		retryableDirectHTTP := false
+		if _, ok := m.(llm.DirectHTTPAdapter); ok {
+			retryableDirectHTTP = true
+		}
+		if !retryableDirectHTTP {
+			for resp, err := range d.generateWithContextRecovery(ctx, req, stream, m) {
+				if !yield(resp, err) {
+					return
+				}
+			}
+			return
+		}
+
+		maxRetries := llm.MaxRetries()
+		for attempt := 0; ; attempt++ {
+			emitted := false
+			retried := false
+			for resp, err := range d.generateWithContextRecovery(ctx, req, stream, m) {
+				if err != nil {
+					if !emitted && llm.IsRetryableTemporaryError(err) && attempt < maxRetries {
+						if !llm.ConsumeRetry() {
+							yield(nil, llm.BudgetExhaustedError(m.Name(), err))
+							return
+						}
+						nextAttempt := attempt + 1
+						delay := llm.RetryDelay(nextAttempt, nil)
+						if !yield(llm.RetryNotice(err.Error(), nextAttempt, maxRetries, delay), nil) {
+							return
+						}
+						select {
+						case <-ctx.Done():
+							yield(nil, ctx.Err())
+							return
+						case <-time.After(delay):
+						}
+						retried = true
+						break
+					}
+					yield(resp, err)
+					return
+				}
+				if responseHasOutput(resp) {
+					emitted = true
+				}
+				if !yield(resp, nil) {
+					return
+				}
+			}
+			if !retried {
+				return
+			}
+		}
+	}
+}
+
+// generateWithContextRecovery wraps the underlying model's response stream and,
+// if the very first item is a context-length error (no content emitted yet),
+// force-compacts the request once and retries. Any later error is passed
+// through untouched to avoid duplicating streamed output.
+func (d *DynamicLLMDelegator) generateWithContextRecovery(ctx context.Context, req *model.LLMRequest, stream bool, m model.LLM) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		emitted := false
+		for resp, err := range m.GenerateContent(ctx, req, stream) {
+			if err != nil && !emitted && req != nil && isContextLengthError(err) {
+				// Force-compact regardless of size gate, then retry once.
+				sessionID := GlobalLogger.CurrentSessionID()
+				req.Contents = CompactContents(req.Contents, sessionID, m)
+				for resp2, err2 := range m.GenerateContent(ctx, req, stream) {
+					if !yield(resp2, err2) {
+						return
+					}
+				}
+				return
+			}
+			if responseHasOutput(resp) {
+				emitted = true
+			}
+			if !yield(resp, err) {
+				return
+			}
+		}
+	}
+}
+
+func responseHasOutput(resp *model.LLMResponse) bool {
+	if resp == nil || resp.Content == nil {
+		return false
+	}
+	for _, p := range resp.Content.Parts {
+		if p == nil {
+			continue
+		}
+		if p.Text != "" || p.FunctionCall != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// isContextLengthError reports whether an error from a provider indicates the
+// request exceeded the model's context window (vs. a transient/auth error).
+func isContextLengthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "prompt is too long"),
+		strings.Contains(msg, "context length"),
+		strings.Contains(msg, "context_length_exceeded"),
+		strings.Contains(msg, "maximum context"),
+		strings.Contains(msg, "too many tokens"),
+		strings.Contains(msg, "reduce the length"):
+		return true
+	}
+	return false
+}
+
+// latestUserText returns the text of the most recent user message, used for
+// skill trigger-matching when rebuilding the system prompt.
+func latestUserText(contents []*genai.Content) string {
+	for i := len(contents) - 1; i >= 0; i-- {
+		c := contents[i]
+		if c == nil || c.Role != "user" {
+			continue
+		}
+		for _, p := range c.Parts {
+			if p != nil && p.Text != "" {
+				return p.Text
+			}
+		}
+	}
+	return ""
 }
 
 func (d *DynamicLLMDelegator) SetModel(m model.LLM) {
@@ -246,7 +459,9 @@ func NewCustomRunner(provider llm.ProviderType, modelName string, apiKey string,
 	// Trigger non-blocking automatic memory consolidation pass ("Dream Pass") in background
 	if GlobalDreamConsolidator != nil {
 		go func() {
-			_, _ = GlobalDreamConsolidator.Consolidate(GlobalMemoryManager, false)
+			if _, err := GlobalDreamConsolidator.Consolidate(GlobalMemoryManager, false); err != nil {
+				LogError(CatSession, "dream_consolidation_failed", "dream consolidation failed", err, nil)
+			}
 		}()
 	}
 
@@ -276,7 +491,7 @@ func NewCustomRunner(provider llm.ProviderType, modelName string, apiKey string,
 			PermissionManager:  GlobalPermissionManager,
 			TaskManager:        GlobalTaskManager,
 			MCPRouter:          GlobalMCPRouter,
-				Bridge:             Bridge,
+			Bridge:             Bridge,
 		},
 	}, nil
 }
@@ -337,4 +552,3 @@ func (cr *CustomRunner) GetTokenUsage() int {
 	}
 	return 0
 }
-

@@ -1,0 +1,29 @@
+# CODEOWNERS — code review ownership
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+*       @Planckbaka
+
+# Core agent runtime
+/pkg/agent/   @Planckbaka
+
+# LLM adapter layer
+/pkg/llm/     @Planckbaka
+
+# TUI layer
+/pkg/tui/     @Planckbaka
+
+# Configuration
+/pkg/config/  @Planckbaka
+
+# CLI entry point
+/cmd/         @Planckbaka
+
+# CI/CD and workflows
+/.github/     @Planckbaka
+
+# Security-critical files
+SECURITY.md   @Planckbaka
+LICENSE       @Planckbaka
+go.mod        @Planckbaka
+go.sum        @Planckbaka

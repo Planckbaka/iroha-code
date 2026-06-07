@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -197,5 +200,72 @@ func TestCronSchedulerMissedTasks_NewTask(t *testing.T) {
 		if missed[0].ScheduleID != "newtask1" {
 			t.Errorf("expected schedule ID 'newtask1', got %s", missed[0].ScheduleID)
 		}
+	}
+}
+
+func TestCronSchedulerConcurrency(t *testing.T) {
+	tempDir, err := os.MkdirTemp("", "cron-concurrency-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	sched := &CronScheduler{
+		dir:      tempDir,
+		lock:     NewCronLock(filepath.Join(tempDir, "cron.lock")),
+		stopChan: make(chan struct{}),
+	}
+
+	// Concurrent Creation, List, Delete, and DetectMissedTasks
+	const numGoroutines = 10
+	const iterations = 50
+	errChan := make(chan error, numGoroutines*2)
+
+	var wg sync.WaitGroup
+
+	// Writer goroutines
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				taskMsg := fmt.Sprintf("task-%d-%d", id, j)
+				taskIDMsg, err := sched.Create("*/2 * * * *", taskMsg, true, false)
+				if err != nil {
+					errChan <- err
+					return
+				}
+				// Parse ID out of the return string (Created task ID ...)
+				parts := strings.Fields(taskIDMsg)
+				if len(parts) >= 3 {
+					taskID := parts[2]
+					_, deleteErr := sched.Delete(taskID)
+					if deleteErr != nil {
+						errChan <- deleteErr
+						return
+					}
+				}
+			}
+		}(i)
+	}
+
+	// Reader goroutines
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < iterations; j++ {
+				_ = sched.ListTasks()
+				_ = sched.DetectMissedTasks()
+				_ = sched.DrainNotifications()
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	for err := range errChan {
+		t.Errorf("concurrency error: %v", err)
 	}
 }

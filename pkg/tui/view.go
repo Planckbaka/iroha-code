@@ -4,32 +4,123 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
 
 	"iroha/pkg/agent"
 
 	"github.com/charmbracelet/glamour"
+	glamansi "github.com/charmbracelet/glamour/ansi"
+	"github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
+	xansi "github.com/charmbracelet/x/ansi"
 )
 
-// RenderMarkdown renders raw markdown into beautifully styled ANSI terminal text using Glamour
+// rendererCache caches glamour.TermRenderer instances by width so that
+// RenderMarkdownWithWidth does not allocate a new renderer on every streaming
+// tick. The cache is bounded in practice because terminal widths are stable.
+var (
+	rendererCache   = make(map[int]*glamour.TermRenderer)
+	rendererCacheMu sync.Mutex
+)
+
+// ClearRendererCache discards all cached renderers. Call this when the
+// terminal width changes or when a fresh style is desired.
+func ClearRendererCache() {
+	rendererCacheMu.Lock()
+	rendererCache = make(map[int]*glamour.TermRenderer)
+	rendererCacheMu.Unlock()
+}
+
+const defaultMarkdownWidth = 80
+
+var compactMarkdownStyle = newCompactMarkdownStyle()
+
+func newCompactMarkdownStyle() glamansi.StyleConfig {
+	style := styles.DarkStyleConfig
+	textColor := style.Document.StylePrimitive.Color
+	style.Document.StylePrimitive.BlockPrefix = ""
+	style.Document.StylePrimitive.BlockSuffix = ""
+	style.Document.StylePrimitive.Color = nil
+	style.Document.Margin = nil
+	if style.Text.Color == nil {
+		style.Text.Color = textColor
+	}
+	return style
+}
+
+// RenderMarkdown renders raw markdown into compact ANSI terminal text.
 func RenderMarkdown(raw string) string {
-	r, err := glamour.Render(raw, "dark")
+	return RenderMarkdownWithWidth(raw, defaultMarkdownWidth)
+}
+
+// RenderMarkdownWithWidth renders markdown for a bounded TUI viewport. Glamour's
+// default document style pads every line to the renderer width, which makes short
+// chat replies look like large colored blank blocks in a differential renderer.
+func RenderMarkdownWithWidth(raw string, width int) string {
+	raw = strings.ReplaceAll(raw, "\r\n", "\n")
+	raw = strings.TrimRight(raw, "\r\n")
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	width = sanitizedWidth(width)
+
+	rendererCacheMu.Lock()
+	r, ok := rendererCache[width]
+	if !ok {
+		var err error
+		r, err = glamour.NewTermRenderer(
+			glamour.WithStyles(compactMarkdownStyle),
+			glamour.WithWordWrap(width),
+		)
+		if err != nil {
+			rendererCacheMu.Unlock()
+			return raw
+		}
+		rendererCache[width] = r
+	}
+	rendererCacheMu.Unlock()
+	rendered, err := r.Render(raw)
 	if err != nil {
 		return raw
 	}
 
 	// Post-process to highlight diff lines in terminal
-	lines := strings.Split(r, "\n")
+	lines := compactMarkdownLines(rendered)
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "+ ") || trimmed == "+" {
-			lines[i] = "\x1b[32m" + line + "\x1b[0m"
+			lines[i] = lipgloss.NewStyle().Foreground(ColorSuccess).Render(line)
 		} else if strings.HasPrefix(trimmed, "- ") || trimmed == "-" {
-			lines[i] = "\x1b[31m" + line + "\x1b[0m"
+			lines[i] = lipgloss.NewStyle().Foreground(ColorDanger).Render(line)
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func compactMarkdownLines(rendered string) []string {
+	lines := strings.Split(strings.ReplaceAll(rendered, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = trimANSIRightSpace(line)
+		if len(out) == 0 && strings.TrimSpace(xansi.Strip(line)) == "" {
+			continue
+		}
+		out = append(out, line)
+	}
+	for len(out) > 0 && strings.TrimSpace(xansi.Strip(out[len(out)-1])) == "" {
+		out = out[:len(out)-1]
+	}
+	return out
+}
+
+func trimANSIRightSpace(line string) string {
+	visible := strings.TrimRightFunc(xansi.Strip(line), unicode.IsSpace)
+	if visible == "" {
+		return ""
+	}
+	return xansi.Cut(line, 0, xansi.StringWidth(visible))
 }
 
 // RenderConfirmCard renders the Human-in-the-Loop inline confirmation prompt
@@ -120,79 +211,12 @@ func RenderWelcomeCard(runner *agent.CustomRunner) string {
 
 	modeStr := string(agent.GlobalPermissionManager.GetMode())
 
-	// Cyber-Holographic IROHA ASCII Logo
-	cyan := lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render
-	pink := lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Render
-
-	sb.WriteString(cyan("   ___   ____     ___    _   _    _    ") + "\n")
-	sb.WriteString(cyan("  |_ _| |  _ \\   / _ \\  | | | |  / \\   ") + "\n")
-	sb.WriteString(pink("   | |  | |_) | | | | | | |_| | / _ \\  ") + "\n")
-	sb.WriteString(pink("   | |  |  _ <  | |_| | |  _  |/ ___ \\ ") + "\n")
-	sb.WriteString(pink("  |___| |_| \\_\\  \\___/  |_| |_/_/   \\_\\") + "\n\n")
-
-	// Energetic part-time student girl welcoming msg
-	welcomeMsg := pink("[Iroha] ") + lipgloss.NewStyle().Foreground(lipgloss.Color("#E2E8F0")).Render("Phew, just finished my shift! Let's write some code together, shall we?")
-	sb.WriteString("  " + welcomeMsg + "\n\n")
-
-	sb.WriteString("  " + StyleKeyHelp.Render("brand  ") + StylePrompt.Render("iroha code") + "  " + StyleKeyHelp.Render("v1.3.0") + "\n")
-	sb.WriteString("  " + StyleKeyHelp.Render("model  ") + StylePrompt.Render(modelName) + "\n")
-	sb.WriteString("  " + StyleKeyHelp.Render("mode   ") + StylePrompt.Render(modeStr) + "\n\n")
-	sb.WriteString("  " + StyleKeyHelp.Render("Type / to see all commands   Up/Down - History   /exit - Quit") + "\n")
+	sb.WriteString(StylePrompt.Render("Iroha Code") + StyleKeyHelp.Render("  terminal coding agent") + "\n\n")
+	sb.WriteString("  " + StyleKeyHelp.Render("model") + "  " + StylePrompt.Render(modelName) + "\n")
+	sb.WriteString("  " + StyleKeyHelp.Render("mode ") + "  " + StylePrompt.Render(modeStr) + "\n\n")
+	sb.WriteString("  " + StyleKeyHelp.Render("Type a task, or use /help, /sessions, /permission") + "\n")
 
 	return StyleWelcome.Render(sb.String())
-}
-
-// RenderSlashMenu renders the slash command popup above the textarea
-func RenderSlashMenu(items []SlashMenuItem, selectedIndex int, width int) string {
-	maxItems := 8
-	if len(items) < maxItems {
-		maxItems = len(items)
-	}
-
-	// Calculate scroll offset so selected item is always visible
-	startIdx := 0
-	if selectedIndex >= maxItems {
-		startIdx = selectedIndex - maxItems + 1
-	}
-	if startIdx+maxItems > len(items) {
-		startIdx = len(items) - maxItems
-	}
-	if startIdx < 0 {
-		startIdx = 0
-	}
-
-	var sb strings.Builder
-	for i := startIdx; i < startIdx+maxItems; i++ {
-		item := items[i]
-		cmdStyle := lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Width(18)
-		descStyle := lipgloss.NewStyle().Foreground(ColorTextMuted)
-
-		line := "  " + cmdStyle.Render(item.Command) + "  " + descStyle.Render(item.Description)
-
-		if i == selectedIndex {
-			line = lipgloss.NewStyle().
-				Background(lipgloss.Color("#3F3F46")).
-				Foreground(lipgloss.Color("#ffffff")).
-				Bold(true).
-				Width(width - 2).
-				Render("  " + lipgloss.NewStyle().Bold(true).Width(18).Render(item.Command) + "  " + item.Description)
-		}
-		sb.WriteString(line + "\n")
-	}
-
-	if len(items) > 8 {
-		sb.WriteString("  " + StyleKeyHelp.Render(fmt.Sprintf("... %d more commands", len(items)-8)) + "\n")
-	}
-
-	footer := StyleKeyHelp.Render("  Up/Down select   Tab complete   Enter execute   Esc close")
-	sb.WriteString(footer)
-
-	menuStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 0)
-
-	return menuStyle.Render(sb.String())
 }
 
 var permModeNames = []struct {
@@ -208,124 +232,6 @@ var permModeNames = []struct {
 	{agent.ModeBypass, "Bypass Mode", "YOLO mode - skips all confirmation prompts (dangerous)", ""},
 }
 
-// RenderPermissionSelectScreen renders the full-screen startup permission selection
-func RenderPermissionSelectScreen(m Model) string {
-	var sb strings.Builder
-
-	sb.WriteString("\n\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).
-		Render("  Select Agent Permission Mode") + "\n\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).
-		Render("  This setting controls the security level for Agent tool execution") + "\n\n")
-
-	for i, entry := range permModeNames {
-		var line string
-		labelStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Width(16)
-		descStyle := lipgloss.NewStyle().Foreground(ColorTextMuted)
-
-		if i == m.PermSelectIndex {
-			pointer := lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("▶ ")
-			selectedLabel := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff")).Render(entry.Label)
-			selectedDesc := lipgloss.NewStyle().Foreground(lipgloss.Color("#A1A1AA")).Render(entry.Desc)
-			line = "  " + pointer + selectedLabel + "\n     " + selectedDesc
-		} else {
-			line = "     " + labelStyle.Render(entry.Label) + "  " + descStyle.Render(entry.Desc)
-		}
-		sb.WriteString(line + "\n\n")
-	}
-
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).
-		Render("  Up/Down select   Enter confirm   Ctrl+C exit") + "\n")
-
-	return sb.String()
-}
-
-// RenderSessionSelectScreen renders the interactive sessions picker screen.
-func RenderSessionSelectScreen(m Model) string {
-	var sb strings.Builder
-
-	sb.WriteString("\n\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).
-		Render("  Iroha Code - Session History Manager") + "\n\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).
-		Render("  Select a session to resume, or start a new session:") + "\n\n")
-
-	// Render virtual "[Start New Session]" entry
-	var line string
-	if m.SessionListIndex == 0 {
-		pointer := lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("▶ ")
-		label := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff")).Render("[ Start New Session ]")
-		desc := lipgloss.NewStyle().Foreground(lipgloss.Color("#A1A1AA")).Render("Start a fresh session with no history.")
-		line = "  " + pointer + label + "\n     " + desc
-	} else {
-		label := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary).Render("[ Start New Session ]")
-		desc := lipgloss.NewStyle().Foreground(ColorTextMuted).Render("Start a fresh session with no history.")
-		line = "     " + label + "  " + desc
-	}
-	sb.WriteString(line + "\n\n")
-
-	// Render historical sessions
-	for i, sess := range m.SessionsList {
-		var line string
-		isActive := sess.ID == m.SessionID
-		activeTag := ""
-		if isActive {
-			activeTag = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render(" (active)")
-		}
-
-		timeStr := sess.LastUpdateTime.Format("2006-01-02 15:04:05")
-
-		tokensStr := "-"
-		costStr := "-"
-		if sess.TotalTokens > 0 {
-			if sess.TotalTokens >= 1000 {
-				tokensStr = fmt.Sprintf("%.1fk", float64(sess.TotalTokens)/1000)
-			} else {
-				tokensStr = fmt.Sprintf("%d", sess.TotalTokens)
-			}
-			if sess.TotalCost > 0 {
-				if sess.TotalCost < 0.01 {
-					costStr = fmt.Sprintf("$%.4f", sess.TotalCost)
-				} else {
-					costStr = fmt.Sprintf("$%.2f", sess.TotalCost)
-				}
-			}
-		}
-
-		statsStr := ""
-		if tokensStr != "-" {
-			if costStr != "-" {
-				statsStr = fmt.Sprintf(" (Tokens: %s, Cost: %s)", tokensStr, costStr)
-			} else {
-				statsStr = fmt.Sprintf(" (Tokens: %s)", tokensStr)
-			}
-		}
-
-		if i+1 == m.SessionListIndex {
-			pointer := lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("▶ ")
-			label := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffffff")).Render(sess.FirstPrompt)
-			desc := lipgloss.NewStyle().Foreground(lipgloss.Color("#A1A1AA")).Render(
-				fmt.Sprintf("ID: %s  Updated: %s  Path: %s%s%s", sess.ID, timeStr, sess.CWD, activeTag, statsStr))
-			line = "  " + pointer + label + "\n     " + desc
-		} else {
-			labelStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorPrimary)
-			if isActive {
-				labelStyle = labelStyle.Foreground(ColorSuccess)
-			}
-			label := labelStyle.Render(sess.FirstPrompt)
-			desc := lipgloss.NewStyle().Foreground(ColorTextMuted).Render(
-				fmt.Sprintf("Updated: %s  Path: %s%s%s", timeStr, sess.CWD, activeTag, statsStr))
-			line = "     " + label + "\n     " + desc
-		}
-		sb.WriteString(line + "\n\n")
-	}
-
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).
-		Render("  Up/Down select   Enter confirm   Esc back   Ctrl+C exit") + "\n")
-
-	return sb.String()
-}
-
 // RenderPermissionSelect renders an inline permission selection card (used after /permission command)
 func RenderPermissionSelect(currentMode agent.PermissionMode) string {
 	var sb strings.Builder
@@ -338,12 +244,13 @@ func RenderPermissionSelect(currentMode agent.PermissionMode) string {
 		} else {
 			marker = "  "
 		}
-		sb.WriteString(fmt.Sprintf("%s%s. %s  —  %s\n",
+		fmt.Fprintf(&sb, "%s%s. %s  —  %s\n",
 			marker,
 			fmt.Sprintf("%d", i+1),
 			lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render(entry.Label),
 			lipgloss.NewStyle().Foreground(ColorTextMuted).Render(entry.Desc),
-		))
+		)
+
 	}
 
 	sb.WriteString("\n" + StyleKeyHelp.Render("  Up/Down select   Enter confirm"))
@@ -363,12 +270,7 @@ func RenderTodoDashboard() string {
 		return ""
 	}
 
-	headerStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return headerStyle.Render("Tasks\n\n"+todoRender) + "\n"
+	return cardStyleSlim.Render("Tasks\n\n"+todoRender) + "\n"
 }
 
 // RenderTaskDashboard renders a compact task graph summary
@@ -430,14 +332,9 @@ func RenderTaskDashboard() string {
 	if total > 0 {
 		progressPct = (done * 100) / total
 	}
-	sb.WriteString(fmt.Sprintf("\n  %d%% complete  (%d/%d)", progressPct, done, total))
+	fmt.Fprintf(&sb, "\n  %d%% complete  (%d/%d)", progressPct, done, total)
 
-	cardStyle := lipgloss.NewStyle().
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
+	return cardStyleSlim.Render(sb.String()) + "\n"
 }
 
 // RenderTaskDetails renders the full detailed task graph panel for /task command
@@ -478,19 +375,19 @@ func RenderTaskDetails() string {
 	sb.WriteString(StyleKeyActive.Render("Durable Work Graph") + "\n\n")
 
 	if len(inProgress) > 0 {
-		sb.WriteString(fmt.Sprintf("  %s\n", badgeInProgress))
+		fmt.Fprintf(&sb, "  %s\n", badgeInProgress)
 		sb.WriteString(strings.Join(inProgress, "\n") + "\n\n")
 	}
 	if len(ready) > 0 {
-		sb.WriteString(fmt.Sprintf("  %s\n", badgeReady))
+		fmt.Fprintf(&sb, "  %s\n", badgeReady)
 		sb.WriteString(strings.Join(ready, "\n") + "\n\n")
 	}
 	if len(blocked) > 0 {
-		sb.WriteString(fmt.Sprintf("  %s\n", badgeBlocked))
+		fmt.Fprintf(&sb, "  %s\n", badgeBlocked)
 		sb.WriteString(strings.Join(blocked, "\n") + "\n\n")
 	}
 	if len(completed) > 0 {
-		sb.WriteString(fmt.Sprintf("  %s\n", badgeCompleted))
+		fmt.Fprintf(&sb, "  %s\n", badgeCompleted)
 		sb.WriteString(strings.Join(completed, "\n") + "\n\n")
 	}
 
@@ -500,14 +397,9 @@ func RenderTaskDetails() string {
 	if total > 0 {
 		progressPct = (done * 100) / total
 	}
-	sb.WriteString(fmt.Sprintf("  %d%% complete  (%d/%d)", progressPct, done, total))
+	fmt.Fprintf(&sb, "  %d%% complete  (%d/%d)", progressPct, done, total)
 
-	cardStyle := lipgloss.NewStyle().
-		Padding(1, 2).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
+	return cardStyleCompact.Render(sb.String()) + "\n"
 }
 
 // RenderErrorCard renders a clean error card wrapping unrecoverable execution errors
@@ -541,15 +433,10 @@ func RenderErrorCard(err error) string {
 	sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("[error]") + " " + errMsg + "\n\n")
 	sb.WriteString("  " + StyleKeyHelp.Render("Troubleshooting:") + "\n")
 	for i, tip := range tips {
-		sb.WriteString(fmt.Sprintf("    %d. %s\n", i+1, StyleKeyHelp.Render(tip)))
+		fmt.Fprintf(&sb, "    %d. %s\n", i+1, StyleKeyHelp.Render(tip))
 	}
 
-	cardStyle := lipgloss.NewStyle().
-		Padding(1, 2).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String())
+	return cardStyleCompact.Render(sb.String())
 }
 
 // FormatToolArgs extracts and formats key arguments from a tool invocation.
@@ -621,12 +508,32 @@ func FormatToolActivity(name string, args any) string {
 			return fmt.Sprintf("Write file %s", path)
 		}
 		return "Write file"
-	case "grep":
+	case "file_edit":
+		path := getStr("path", "TargetFile", "AbsolutePath")
+		if path != "" {
+			return fmt.Sprintf("Edit file %s", path)
+		}
+		return "Edit file"
+	case "file_edit_batch":
+		return "Apply atomic batch file edits"
+	case "list_directory":
+		path := getStr("path", "DirectoryPath", "Cwd")
+		if path != "" {
+			return fmt.Sprintf("List directory %s", path)
+		}
+		return "List directory"
+	case "search_grep":
 		pattern := getStr("pattern", "query", "Query")
 		if pattern != "" {
-			return fmt.Sprintf("Search pattern/regex %q", pattern)
+			return fmt.Sprintf("Search pattern %q", pattern)
 		}
-		return "Search file contents"
+		return "Search pattern"
+	case "find_files":
+		pattern := getStr("pattern", "Query")
+		if pattern != "" {
+			return fmt.Sprintf("Find files matching %q", pattern)
+		}
+		return "Find files"
 	case "shell_run":
 		cmd := getStr("command", "CommandLine")
 		if cmd != "" {
@@ -647,6 +554,26 @@ func FormatToolActivity(name string, args any) string {
 		return "Save cross-session memory"
 	case "memory_list":
 		return "List cross-session memories"
+	case "memory_search":
+		query := getStr("query", "Query")
+		if query != "" {
+			return fmt.Sprintf("Search cross-session memories %q", query)
+		}
+		return "Search cross-session memories"
+	case "memory_update":
+		nameVal := getStr("name", "Name")
+		if nameVal != "" {
+			return fmt.Sprintf("Update cross-session memory %q", nameVal)
+		}
+		return "Update cross-session memory"
+	case "memory_delete":
+		nameVal := getStr("name", "Name")
+		if nameVal != "" {
+			return fmt.Sprintf("Delete cross-session memory %q", nameVal)
+		}
+		return "Delete cross-session memory"
+	case "memory_dream":
+		return "Consolidate persistent memories"
 	case "task_create":
 		id := getStr("id", "ID", "TaskId")
 		if id != "" {
@@ -699,6 +626,24 @@ func FormatToolActivity(name string, args any) string {
 		return "Read agent inbox"
 	case "broadcast":
 		return "Broadcast to agent team"
+	case "spawn_subagent":
+		role := getStr("role", "Role")
+		if role != "" {
+			return fmt.Sprintf("Spawn subagent %s", role)
+		}
+		return "Spawn subagent"
+	case "web_fetch":
+		url := getStr("url", "Url")
+		if url != "" {
+			return fmt.Sprintf("Fetch web page %s", url)
+		}
+		return "Fetch web page"
+	case "web_search":
+		query := getStr("query", "Query")
+		if query != "" {
+			return fmt.Sprintf("Search the web for %q", query)
+		}
+		return "Search the web"
 	case "worktree_create":
 		nameVal := getStr("name", "Name")
 		if nameVal != "" {
@@ -715,6 +660,16 @@ func FormatToolActivity(name string, args any) string {
 		return "Close/clean up git worktree"
 	case "mcp_server_list":
 		return "List configured MCP servers"
+	case "lsp_goto_definition":
+		return "LSP: Go to definition"
+	case "lsp_find_references":
+		return "LSP: Find references"
+	case "lsp_document_symbols":
+		return "LSP: Extract document symbols"
+	case "lsp_hover":
+		return "LSP: Hover symbol"
+	case "lsp_diagnostics":
+		return "LSP: Fetch server diagnostics"
 	default:
 		argsStr := FormatToolArgs(args)
 		if argsStr != "" {
@@ -727,7 +682,7 @@ func FormatToolActivity(name string, args any) string {
 // maxVisibleStreamLines is the maximum number of lines to display in the shell stream area
 const maxVisibleStreamLines = 15
 
-// RenderShellStreamArea renders a bordered area showing real-time shell output
+// RenderShellStreamArea renders a flat console container showing real-time shell output
 func RenderShellStreamArea(lines []string, cmd string, width int) string {
 	if len(lines) == 0 {
 		return ""
@@ -742,372 +697,106 @@ func RenderShellStreamArea(lines []string, cmd string, width int) string {
 
 	var sb strings.Builder
 
+	// Top boundary line
+	sepLen := width - 4
+	if sepLen <= 0 {
+		sepLen = 40
+	}
+	separator := lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", sepLen))
+	sb.WriteString("  " + separator + "\n")
+
 	// Header with command name
 	cmdDisplay := cmd
 	if len(cmdDisplay) > width-14 {
 		cmdDisplay = cmdDisplay[:width-17] + "..."
 	}
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorSecondary).Render(" shell: "))
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("$ " + cmdDisplay))
-	sb.WriteString("\n")
+	sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorTextMuted).Render("console ") + lipgloss.NewStyle().Foreground(ColorText).Render("$ "+cmdDisplay) + "\n")
 
 	if truncated > 0 {
 		sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).
-			Render(fmt.Sprintf("  ... (truncated %d earlier lines)", truncated)))
+			Render(fmt.Sprintf("    ... %d older lines hidden", truncated)))
 		sb.WriteString("\n")
 	}
 
 	for _, line := range visibleLines {
-		sb.WriteString("  " + line + "\n")
+		sb.WriteString("    " + lipgloss.NewStyle().Foreground(ColorText).Render(line) + "\n")
 	}
 
-	areaStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorSecondary).
-		Padding(0, 1).
-		MarginTop(1).
-		Width(width - 4)
+	// Bottom boundary line
+	sb.WriteString("  " + separator + "\n")
 
-	return areaStyle.Render(sb.String())
+	return sb.String()
+}
+
+// getToolCategoryTheme returns style details and prefix icons for categorized tools.
+func getToolCategoryTheme(name string) (lipgloss.Color, string, string) {
+	switch name {
+	case "file_read", "file_write", "file_edit", "file_edit_batch", "list_directory", "search_grep", "find_files",
+		"lsp_goto_definition", "lsp_find_references", "lsp_document_symbols", "lsp_hover", "lsp_diagnostics":
+		return ColorPrimary, "file", "File Operations"
+	case "shell_run", "background_run", "check_background", "web_fetch", "web_search":
+		return ColorWarning, "cmd", "Command Execution"
+	case "spawn_teammate", "list_teammates", "send_message", "read_inbox", "broadcast", "spawn_subagent":
+		return ColorSecondary, "agent", "Agent Collaboration"
+	default:
+		return ColorSecondary, "tool", "External Tools"
+	}
 }
 
 // RenderToolErrorCard renders a minimal failure card for tool execution
 func RenderToolErrorCard(name string, args any, duration time.Duration, err error) string {
-	var sb strings.Builder
+	color, icon, _ := getToolCategoryTheme(name)
 	activity := FormatToolActivity(name, args)
-	sb.WriteString(fmt.Sprintf("\x1b[1;31m[fail]\x1b[0m %s  %v\n", activity, duration.Round(time.Millisecond)))
+
+	failStyled := lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("✗")
+	iconStyled := lipgloss.NewStyle().Foreground(color).Render("[" + icon + "]")
+	textStyled := lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render(activity)
+	durStyled := lipgloss.NewStyle().Foreground(ColorTextMuted).Render(fmt.Sprintf("(%s)", duration.Round(time.Millisecond).String()))
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "  %s %s %s %s\n", failStyled, iconStyled, textStyled, durStyled)
 	if err != nil {
-		sb.WriteString(fmt.Sprintf("       %s", err.Error()))
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorDanger).Render(fmt.Sprintf("    ↳ Error: %s", err.Error())))
 	} else {
-		sb.WriteString("       operation failed")
+		sb.WriteString(lipgloss.NewStyle().Foreground(ColorDanger).Render("    ↳ Error: operation failed"))
 	}
 
-	cardStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorDanger).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String())
+	return sb.String()
 }
 
 // RenderToolSuccessCard renders a minimal success log for tool execution
 func RenderToolSuccessCard(name string, args any, duration time.Duration) string {
+	color, icon, _ := getToolCategoryTheme(name)
 	activity := FormatToolActivity(name, args)
-	return fmt.Sprintf("\x1b[32m✓\x1b[0m %s  \x1b[2m%v\x1b[0m", activity, duration.Round(time.Millisecond))
+
+	tickStyled := lipgloss.NewStyle().Foreground(ColorSuccess).Render("✓")
+	iconStyled := lipgloss.NewStyle().Foreground(color).Render("[" + icon + "]")
+	textStyled := lipgloss.NewStyle().Foreground(color).Bold(true).Render(activity)
+	durStyled := lipgloss.NewStyle().Foreground(ColorTextMuted).Render(fmt.Sprintf("(%s)", duration.Round(time.Millisecond).String()))
+
+	return fmt.Sprintf("  %s %s %s %s", tickStyled, iconStyled, textStyled, durStyled)
 }
 
-// RenderTeamDashboard renders a clean team roster card
-func RenderTeamDashboard() string {
-	teammates, err := agent.GlobalTeamManager.ListTeammates()
-	if err != nil {
-		return StyleToolError.Render(fmt.Sprintf("[error] Failed to list teammates: %v", err))
-	}
-
-	var sb strings.Builder
-	sb.WriteString(StyleKeyActive.Render("Agent Teams") + "\n\n")
-
-	if len(teammates) == 0 {
-		sb.WriteString("  " + StyleKeyHelp.Render("no teammates registered") + "\n")
-		sb.WriteString("  " + StyleKeyHelp.Render("use spawn_teammate tool to add one") + "\n")
-	} else {
-		for _, t := range teammates {
-			statusSymbol := lipgloss.NewStyle().Foreground(ColorTextMuted).Render("offline")
-			if t.Status == "working" {
-				statusSymbol = lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("working")
-			} else if t.Status == "idle" {
-				statusSymbol = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("idle")
-			}
-
-			sb.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
-				StylePrompt.Render(t.Name),
-				lipgloss.NewStyle().Foreground(ColorSecondary).Render(t.Role),
-				statusSymbol,
-				StyleKeyHelp.Render(t.LastActive.Format("15:04:05")),
-			))
-		}
-	}
-
-	cardStyle := lipgloss.NewStyle().
-		Padding(1, 2).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
-}
-
-// RenderWorktreeDashboard renders a clean worktree isolation card
-func RenderWorktreeDashboard() string {
-	worktrees, err := agent.GlobalWorktreeManager.List()
-	if err != nil {
-		return StyleToolError.Render(fmt.Sprintf("[error] Failed to list worktrees: %v", err))
-	}
-
-	var sb strings.Builder
-	sb.WriteString(StyleKeyActive.Render("Git Worktrees") + "\n\n")
-
-	if len(worktrees) == 0 {
-		sb.WriteString("  " + StyleKeyHelp.Render("no worktrees registered") + "\n")
-		sb.WriteString("  " + StyleKeyHelp.Render("worktrees are created automatically when a task is dispatched") + "\n")
-	} else {
-		for _, w := range worktrees {
-			statusSymbol := lipgloss.NewStyle().Foreground(ColorTextMuted).Render("removed")
-			if w.Status == "active" {
-				statusSymbol = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("active")
-			} else if w.Status == "kept" {
-				statusSymbol = lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("kept")
-			}
-
-			taskInfo := ""
-			if w.TaskID != "" {
-				taskInfo = lipgloss.NewStyle().Foreground(ColorSecondary).Render(fmt.Sprintf(" [%s]", w.TaskID))
-			}
-
-			sb.WriteString(fmt.Sprintf("  %s  %s%s  %s\n",
-				StylePrompt.Render(w.Name),
-				lipgloss.NewStyle().Foreground(ColorSecondary).Render(w.Branch),
-				taskInfo,
-				statusSymbol,
-			))
-			sb.WriteString(fmt.Sprintf("    %s\n", StyleKeyHelp.Render(w.Path)))
-		}
-	}
-
-	cardStyle := lipgloss.NewStyle().
-		Padding(1, 2).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
-}
-
-// RenderMCPDashboard renders a clean MCP plugin server card
-func RenderMCPDashboard() string {
-	servers := agent.GlobalMCPRouter.ListServers()
-
-	var sb strings.Builder
-	sb.WriteString(StyleKeyActive.Render("MCP Plugins") + "\n\n")
-
-	if len(servers) == 0 {
-		sb.WriteString("  " + StyleKeyHelp.Render("no MCP servers configured") + "\n")
-		sb.WriteString("  " + StyleKeyHelp.Render("edit .iroha/plugins.json to add servers") + "\n")
-	} else {
-		for name, status := range servers {
-			statusSymbol := lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("disconnected")
-			if status == "connected" {
-				statusSymbol = lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render("connected")
-			}
-
-			sb.WriteString(fmt.Sprintf("  %s  %s\n",
-				StylePrompt.Render(name),
-				statusSymbol,
-			))
-		}
-
-		tools, err := agent.GlobalMCPRouter.DiscoverTools()
-		if err == nil && len(tools) > 0 {
-			sb.WriteString("\n  " + StyleKeyHelp.Render("available tools:") + "\n")
-			for _, t := range tools {
-				sb.WriteString(fmt.Sprintf("    %s  %s\n",
-					lipgloss.NewStyle().Foreground(ColorSuccess).Render(t.Name()),
-					StyleKeyHelp.Render(t.Description()),
-				))
-			}
-		}
-	}
-
-	cardStyle := lipgloss.NewStyle().
-		Padding(1, 2).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
-}
-
-// RenderBackgroundDashboard renders the background tasks and CI watchers
-func RenderBackgroundDashboard() string {
-	var sb strings.Builder
-
-	sb.WriteString(StyleKeyActive.Render("Background Tasks") + "\n")
-	sb.WriteString(strings.Repeat("─", 60) + "\n")
-
-	watchers := agent.ListActiveCIWatchers()
-	if len(watchers) > 0 {
-		sb.WriteString(lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render("CI Watchers:") + "\n")
-		for owner, startTime := range watchers {
-			dur := time.Since(startTime).Round(time.Second)
-			sb.WriteString(fmt.Sprintf("  %s  uptime: %s\n", StylePrompt.Render(owner), dur))
-		}
-		sb.WriteString("\n")
-	}
-
-	bgStatus, err := agent.GlobalBackgroundManager.Check("")
-	if err == nil && bgStatus != "No background tasks." {
-		sb.WriteString(lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("System Tasks:") + "\n")
-		lines := strings.Split(bgStatus, "\n")
-		for _, line := range lines {
-			sb.WriteString("  " + line + "\n")
-		}
-	} else {
-		sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).Render("  no background tasks running") + "\n")
-	}
-
-	cardStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
-}
-
-// RenderStatusBar renders an enhanced status bar with agent activity and token count
-func RenderStatusBar(m Model) string {
-	modeStr := strings.ToLower(string(agent.GlobalPermissionManager.GetMode()))
-
-	// Left: agent action + duration
-	var left string
-	if m.CurrentStatusText != "" && (m.State == stateThinking || m.State == stateStreaming) {
-		// Prefer displaying LLM status tag text
-		left = fmt.Sprintf("  [thinking] %s", m.CurrentStatusText)
-	} else if m.ActiveTool.Running {
-		dur := time.Since(m.RoundStartTime).Round(time.Millisecond)
-		activity := FormatToolActivity(m.ActiveTool.Name, m.ActiveTool.Args)
-		if len(activity) > 40 {
-			activity = activity[:37] + "..."
-		}
-		left = fmt.Sprintf("  [tool] %s (%v)", activity, dur)
-	} else if m.State == stateThinking || m.State == stateStreaming {
-		dur := time.Since(m.RoundStartTime).Round(time.Second)
-		left = fmt.Sprintf("  [thinking] thinking... (%v)", dur)
-	} else {
-		left = fmt.Sprintf("  mode:%s", modeStr)
-	}
-
-	if m.IsGoalMode && m.GoalText != "" {
-		goalText := m.GoalText
-		if len(goalText) > 20 {
-			goalText = goalText[:17] + "..."
-		}
-		left = fmt.Sprintf("  🎯 [goal] %s | %s", goalText, strings.TrimPrefix(left, "  "))
-	}
-
-	// Right: [mode] + token count + cost
-	var tokenStr string
-	if m.TotalTokens > 0 {
-		var tokPart string
-		if m.TotalTokens >= 1000 {
-			tokPart = fmt.Sprintf("%.1fk", float64(m.TotalTokens)/1000)
-		} else {
-			tokPart = fmt.Sprintf("%d", m.TotalTokens)
-		}
-		if m.TotalSessionCost > 0 {
-			var costPart string
-			if m.TotalSessionCost < 0.01 {
-				costPart = fmt.Sprintf("$%.4f", m.TotalSessionCost)
-			} else {
-				costPart = fmt.Sprintf("$%.2f", m.TotalSessionCost)
-			}
-			tokenStr = fmt.Sprintf("%s (%s)", tokPart, costPart)
-		} else {
-			tokenStr = tokPart
-		}
-	} else {
-		tokenStr = "-"
-	}
-	right := fmt.Sprintf("[%s] %s  ", modeStr, tokenStr)
-
-	leftWidth := lipgloss.Width(left)
-	rightWidth := lipgloss.Width(right)
-
-	spaces := m.Width - leftWidth - rightWidth
-	if spaces < 0 {
-		spaces = 0
-	}
-
-	barText := left + strings.Repeat(" ", spaces) + right
-	return StyleStatusBar.Render(barText)
-}
-
-// RenderPathCompletionBar renders the bottom path auto-completion suggestion line.
-func RenderPathCompletionBar(items []string, selectedIndex int, width int) string {
-	if len(items) == 0 {
-		return ""
-	}
-
-	styleActive := lipgloss.NewStyle().Foreground(ColorWarning).Bold(true)
-	styleNormal := lipgloss.NewStyle().Foreground(ColorTextMuted)
-	stylePrefix := lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true)
-
-	var builder strings.Builder
-	builder.WriteString(stylePrefix.Render("  Candidates: "))
-
-	var itemStrings []string
-	for i, item := range items {
-		if i == selectedIndex {
-			itemStrings = append(itemStrings, styleActive.Render("▸ "+item))
-		} else {
-			itemStrings = append(itemStrings, styleNormal.Render(item))
-		}
-	}
-
-	// Dynamic truncation to prevent terminal line folding
-	candidatesStr := strings.Join(itemStrings, "   ")
-	totalLen := lipgloss.Width(stylePrefix.Render("  Candidates: ")) + lipgloss.Width(candidatesStr)
-
-	if totalLen > width && width > 20 {
-		limit := width
-		currentLen := lipgloss.Width(stylePrefix.Render("  Candidates: "))
-		var truncated []string
-
-		for i, itemStr := range itemStrings {
-			w := lipgloss.Width(itemStr)
-			if currentLen+w > limit {
-				if i > 0 {
-					truncated = append(truncated, styleNormal.Render("..."))
-				}
-				break
-			}
-			truncated = append(truncated, itemStr)
-			currentLen += w + 3 // accounts for spacing "   "
-		}
-		if len(truncated) > 0 {
-			candidatesStr = strings.Join(truncated, "   ")
-		}
-	}
-
-	builder.WriteString(candidatesStr)
-	return builder.String()
-}
-
-// RenderCancelCard renders a premium cancellation card when an operation is aborted
+// RenderCancelCard renders a compact cancellation notice.
 func RenderCancelCard(duration time.Duration) string {
 	var sb strings.Builder
-	sb.WriteString("⚠️  " + lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("Session aborted by user (Generation Aborted)") + "\n\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Render(fmt.Sprintf("    • Run duration   :  %s\n", duration.Round(time.Millisecond))))
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Render("    • Interrupted at :  " + time.Now().Format("15:04:05") + "\n"))
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorDanger).Bold(true).Render("aborted") + " ")
+	sb.WriteString("Session aborted by user\n")
+	fmt.Fprintf(&sb, "  duration: %s\n", duration.Round(time.Millisecond))
 
-	cardStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorDanger).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
+	sb.WriteString("  time:     " + time.Now().Format("15:04:05") + "\n")
+	return sb.String()
 }
 
-// RenderHelpDashboard renders a gorgeous cheat sheet overlay for keyboard shortcuts and commands
+// RenderHelpDashboard renders the command reference.
 func RenderHelpDashboard() string {
 	var sb strings.Builder
 
-	sb.WriteString("\n" + lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Render("💡 Iroha Code — Developer Guide & Command Reference") + "\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Render("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━") + "\n\n")
+	sb.WriteString("\n" + lipgloss.NewStyle().Foreground(ColorText).Bold(true).Render("Iroha Code help") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", 60)) + "\n\n")
 
 	// Keyboard Shortcuts section
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Render(" ⌨️  Keyboard Shortcuts") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorText).Bold(true).Render("Keyboard Shortcuts") + "\n")
 
 	shortcuts := []struct {
 		Keys string
@@ -1116,94 +805,31 @@ func RenderHelpDashboard() string {
 		{"Ctrl + C", "Abort current thinking and tool calls, or exit idle state"},
 		{"Ctrl + Y", "Copy last AI response to system clipboard"},
 		{"Ctrl + D / /exit", "Safely save and exit current session"},
-		{"PageUp / PageDown", "Scroll up/down half a page in the viewport"},
+		{"PgUp / PgDn", "Scroll the conversation viewport"},
 		{"Esc", "Exit session history picker or close slash command autocomplete"},
 		{"↑ / ↓ (empty input)", "Browse or cycle through prompt history"},
 		{" / + command (e.g. /doc)", "Trigger autocomplete, press Tab or Enter to select"},
 	}
 
 	for _, s := range shortcuts {
-		sb.WriteString(fmt.Sprintf("    %-18s : %s\n",
+		fmt.Fprintf(&sb, "    %-18s : %s\n",
 			lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render(s.Keys),
-			lipgloss.NewStyle().Foreground(ColorTextMuted).Render(s.Desc)))
+			lipgloss.NewStyle().Foreground(ColorTextMuted).Render(s.Desc))
+
 	}
 	sb.WriteString("\n")
 
 	// Slash Commands section
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorSecondary).Bold(true).Render(" 🚀 Slash Commands") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorText).Bold(true).Render("Slash commands") + "\n")
 	for _, cmd := range AllSlashCommands {
-		sb.WriteString(fmt.Sprintf("    %-18s : %s\n",
+		fmt.Fprintf(&sb, "    %-18s : %s\n",
 			lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render(cmd.Command),
-			lipgloss.NewStyle().Foreground(ColorTextMuted).Render(cmd.Description)))
+			lipgloss.NewStyle().Foreground(ColorTextMuted).Render(cmd.Description))
+
 	}
 
-	sb.WriteString("\n" + lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render(" 🎉 Type a prompt to guide the Agent! Type /sessions to switch history, /doctor to diagnose environment.") + "\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Render("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━") + "\n")
+	sb.WriteString("\n" + StyleKeyHelp.Render("Type a task, /sessions to switch history, or /doctor to diagnose the environment.") + "\n")
+	sb.WriteString(lipgloss.NewStyle().Foreground(ColorBorder).Render(strings.Repeat("─", 60)) + "\n")
 
-	cardStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(ColorPrimary).
-		Padding(0, 1).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return cardStyle.Render(sb.String()) + "\n"
-}
-
-// RenderFrustrationPauseCard renders the diagnostic card shown when the agent gets stuck in a loop
-func RenderFrustrationPauseCard(toolName string, args any, errMsg string, selectedIndex int) string {
-	var sb strings.Builder
-
-	// Header
-	sb.WriteString(lipgloss.NewStyle().
-		Foreground(ColorDanger).Bold(true).
-		Render("⚠️  Frustration Loop Detected (Agent Paused)") + "\n\n")
-
-	sb.WriteString(lipgloss.NewStyle().Foreground(ColorTextMuted).Render("The agent has repeatedly attempted this exact action 3 times consecutively and failed. Please intervene:") + "\n\n")
-
-	// Failing action details
-	sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorPrimary).Render("Action: ") + lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Render(toolName) + "\n")
-	
-	argsStr := FormatToolArgs(args)
-	if argsStr != "" {
-		sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorPrimary).Render("Arguments: ") + lipgloss.NewStyle().Foreground(ColorTextMuted).Render(argsStr) + "\n")
-	}
-
-	if errMsg != "" {
-		sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorPrimary).Render("Error: ") + lipgloss.NewStyle().Foreground(ColorDanger).Render(errMsg) + "\n")
-	}
-	sb.WriteString("\n")
-
-	// Options
-	opt0 := lipgloss.NewStyle().Foreground(ColorPrimary).Bold(true).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(ColorPrimary)
-	opt1 := lipgloss.NewStyle().Foreground(ColorSuccess).Bold(true).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(ColorSuccess)
-	opt2 := lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Padding(0, 1).Border(lipgloss.RoundedBorder()).BorderForeground(ColorWarning)
-
-	if selectedIndex == 0 {
-		opt0 = opt0.Background(ColorPrimary).Foreground(lipgloss.Color("#18181B"))
-	} else if selectedIndex == 1 {
-		opt1 = opt1.Background(ColorSuccess).Foreground(lipgloss.Color("#18181B"))
-	} else if selectedIndex == 2 {
-		opt2 = opt2.Background(ColorWarning).Foreground(lipgloss.Color("#18181B"))
-	}
-
-	sb.WriteString("  ")
-	sb.WriteString(opt0.Render("Edit Args"))
-	sb.WriteString("  ")
-	sb.WriteString(opt1.Render("Bypass Step"))
-	sb.WriteString("  ")
-	sb.WriteString(opt2.Render("Prompt & Retry"))
-
-	sb.WriteString("\n\n")
-	sb.WriteString("  " + lipgloss.NewStyle().Foreground(ColorTextMuted).Italic(true).
-		Render("← → / Tab Select   Enter Confirm"))
-
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.DoubleBorder()).
-		BorderForeground(ColorDanger).
-		Padding(1, 2).
-		MarginTop(1).
-		MarginBottom(1)
-
-	return boxStyle.Render(sb.String())
+	return cardStyleFlush.Render(sb.String()) + "\n"
 }

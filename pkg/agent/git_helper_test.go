@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -144,5 +145,64 @@ func TestGitCommit(t *testing.T) {
 	gotMsg := out.String()
 	if gotMsg != commitMsg {
 		t.Errorf("expected commit message '%s', got '%s'", commitMsg, gotMsg)
+	}
+}
+
+func TestGitCommitPathsLeavesUnrelatedChangesUntouched(t *testing.T) {
+	repo, cleanup := setupTestGitRepo(t)
+	defer cleanup()
+
+	if err := os.WriteFile("agent.txt", []byte("initial agent"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("user.txt", []byte("initial user"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_ = exec.Command("git", "add", "agent.txt", "user.txt").Run()
+	_ = exec.Command("git", "commit", "-m", "initial").Run()
+
+	if err := os.WriteFile("agent.txt", []byte("agent change"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("user.txt", []byte("user change"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_ = exec.Command("git", "add", "user.txt").Run()
+
+	agentPath := filepath.Join(repo, "agent.txt")
+	diff, err := GitStageAndDiffPaths([]string{agentPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(diff, "agent change") || strings.Contains(diff, "user change") {
+		t.Fatalf("selected diff contains wrong files:\n%s", diff)
+	}
+	if err := GitCommitPaths("test: commit selected paths", []string{agentPath}); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(status)
+	if strings.Contains(got, "agent.txt") {
+		t.Fatalf("agent path remained dirty after selected commit: %s", got)
+	}
+	if !strings.Contains(got, "M  user.txt") {
+		t.Fatalf("unrelated staged user change was not preserved: %s", got)
+	}
+}
+
+func TestFilterInitiallyDirtyPaths(t *testing.T) {
+	repo, cleanup := setupTestGitRepo(t)
+	defer cleanup()
+
+	clean := filepath.Join(repo, "clean.txt")
+	dirty := filepath.Join(repo, "dirty.txt")
+	got := FilterInitiallyDirtyPaths([]string{clean, dirty}, map[string]bool{dirty: true})
+
+	if len(got) != 1 || got[0] != clean {
+		t.Fatalf("filtered paths = %v, want only %s", got, clean)
 	}
 }
