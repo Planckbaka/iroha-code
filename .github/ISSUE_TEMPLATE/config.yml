@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussion / 讨论
+    url: https://github.com/Planckbaka/iroha-code/discussions
+    about: Ask questions, share ideas, or discuss with the community / 提问、分享想法或与社区讨论
+  - name: 📖 Documentation / 文档
+    url: https://github.com/Planckbaka/iroha-code#readme
+    about: Check the README and docs before opening an issue / 提交 Issue 前请先查阅文档
