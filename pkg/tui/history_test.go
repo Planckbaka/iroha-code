@@ -151,9 +151,8 @@ func TestHistoryStore_RenderWithTailKeepsViewportAnchored(t *testing.T) {
 		s.Add(HistoryEntry{Role: RoleSystem, Content: "history"})
 	}
 
-	before := s.RenderWithTail(80, 4, []string{"tail-1"})
 	s.ScrollUp(2)
-	before = s.RenderWithTail(80, 4, []string{"tail-1"})
+	before := s.RenderWithTail(80, 4, []string{"tail-1"})
 	after := s.RenderWithTail(80, 4, []string{"tail-1", "tail-2"})
 
 	if strings.Join(before, "\n") != strings.Join(after, "\n") {

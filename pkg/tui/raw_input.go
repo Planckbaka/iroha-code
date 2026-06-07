@@ -47,7 +47,7 @@ func ReadRawKeys(ctx context.Context, onKey func(Key) bool) error {
 	if err != nil {
 		return err
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
 
 	buf := make([]byte, 32)
 	for {

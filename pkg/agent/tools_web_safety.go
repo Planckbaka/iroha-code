@@ -138,9 +138,9 @@ var ssrfSafeClient = &http.Client{
 	Transport: ssrfSafeTransport,
 	Timeout:   30 * time.Second,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if err := checkSSRF(req.URL); err != nil {
-				return err
-			}
+		if err := checkSSRF(req.URL); err != nil {
+			return err
+		}
 		if len(via) >= 10 {
 			return fmt.Errorf("too many redirects")
 		}

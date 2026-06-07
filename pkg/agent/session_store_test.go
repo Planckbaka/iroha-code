@@ -295,10 +295,10 @@ func TestValidateResume(t *testing.T) {
 		{
 			"compaction_archive_missing",
 			SerializedSession{
-				CWD:                    existingCWD,
-				Events:                 []*session.Event{session.NewEvent("inv")},
-				State:                  map[string]any{"k": "v"},
-				CompactionArchivePath:  filepath.Join(tmpDir, "missing.jsonl"),
+				CWD:                   existingCWD,
+				Events:                []*session.Event{session.NewEvent("inv")},
+				State:                 map[string]any{"k": "v"},
+				CompactionArchivePath: filepath.Join(tmpDir, "missing.jsonl"),
 			},
 			1, "compaction archive",
 		},
@@ -610,12 +610,12 @@ func TestPersistentSessionService_ListSavedSessionsSortOrder(t *testing.T) {
 	older := SerializedSession{
 		ID: "sess-older", AppName: "test", UserID: "u",
 		LastUpdateTime: time.Now().Add(-1 * time.Hour),
-		State: map[string]any{}, Events: []*session.Event{},
+		State:          map[string]any{}, Events: []*session.Event{},
 	}
 	newer := SerializedSession{
 		ID: "sess-newer", AppName: "test", UserID: "u",
 		LastUpdateTime: time.Now(),
-		State: map[string]any{}, Events: []*session.Event{},
+		State:          map[string]any{}, Events: []*session.Event{},
 	}
 
 	for _, s := range []SerializedSession{older, newer} {
@@ -702,7 +702,7 @@ func TestSessionMetadata_JSONRoundTrip(t *testing.T) {
 	original := SessionMetadata{
 		ID: "meta-1", CWD: "/project", FirstPrompt: "Build it",
 		LastUpdateTime: time.Date(2026, 5, 28, 0, 0, 0, 0, time.UTC),
-		TotalTokens: 1000, TotalCost: 0.002,
+		TotalTokens:    1000, TotalCost: 0.002,
 	}
 	data, err := json.Marshal(original)
 	if err != nil {

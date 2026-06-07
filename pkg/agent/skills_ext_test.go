@@ -385,7 +385,7 @@ func TestGetSkillByID_NotFound(t *testing.T) {
 func TestAllSkills_EmptyManager(t *testing.T) {
 	sm := newTestSkillManager()
 	all := sm.AllSkills()
-	if all != nil && len(all) != 0 {
+	if len(all) != 0 {
 		t.Errorf("expected empty slice, got %v", all)
 	}
 }

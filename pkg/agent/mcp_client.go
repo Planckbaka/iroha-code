@@ -9,8 +9,8 @@ import (
 	"os/exec"
 	"sync"
 	"time"
-
 )
+
 type JsonRpcMessage struct {
 	Jsonrpc string          `json:"jsonrpc"`
 	Id      any             `json:"id,omitempty"`
@@ -279,4 +279,3 @@ func (c *MCPClient) readLoop() {
 		}
 	}
 }
-

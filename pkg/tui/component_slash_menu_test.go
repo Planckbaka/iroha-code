@@ -223,12 +223,12 @@ func TestSlashMenuHandleInputKeys(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		key      Key
-		wantIdx  int
-		wantAct  bool
+		name    string
+		key     Key
+		wantIdx int
+		wantAct bool
 	}{
-		{"up moves selection", Key{Type: KeyUp}, 1, true},  // wraps from 0 to 1
+		{"up moves selection", Key{Type: KeyUp}, 1, true}, // wraps from 0 to 1
 		{"down moves selection", Key{Type: KeyDown}, 1, true},
 		{"escape closes", Key{Type: KeyEsc}, 0, false},
 		{"enter closes with items", Key{Type: KeyEnter}, 0, false},

@@ -681,7 +681,7 @@ func TestHistoryStorePageDown(t *testing.T) {
 func TestNewApp(t *testing.T) {
 	app := NewApp(nil, "test-session", false, "")
 	if app == nil {
-		t.Error("app should not be nil")
+		t.Fatal("app should not be nil")
 	}
 	if app.state != statePermissionSelect {
 		t.Error("default state should be permissionSelect")

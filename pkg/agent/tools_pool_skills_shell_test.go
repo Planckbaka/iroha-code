@@ -13,7 +13,6 @@ import (
 	"google.golang.org/adk/session"
 )
 
-
 func TestPoolTypePromptPrefix(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -49,7 +48,6 @@ func TestPoolTypePromptPrefix(t *testing.T) {
 		}
 	}
 }
-
 
 func TestSkillsLoadFromProjectDir(t *testing.T) {
 	// Create a temp project skills directory
@@ -289,7 +287,6 @@ func TestSkillsAllSkills(t *testing.T) {
 	}
 }
 
-
 func TestShellBackgroundRunHandler(t *testing.T) {
 	// Save and restore global
 	origBM := GlobalBackgroundManager
@@ -385,7 +382,6 @@ func TestShellCheckBackgroundHandlerUnknownTask(t *testing.T) {
 		t.Errorf("expected error about unknown task, got: %v", err)
 	}
 }
-
 
 func TestSessionStoreList(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -514,7 +510,6 @@ func TestSessionStoreListSavedSessionsSortedByTime(t *testing.T) {
 		t.Errorf("expected last session to be sess-0 (oldest), got %s", sessions[2].ID)
 	}
 }
-
 
 func TestSubagentSpawnHandlerValidation(t *testing.T) {
 	// SpawnSubagentHandler delegates to GlobalSubagentManager.RunSubagent

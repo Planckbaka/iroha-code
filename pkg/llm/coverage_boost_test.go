@@ -540,7 +540,6 @@ func TestAnthropicAdapter_ToolsInRequest(t *testing.T) {
 	}
 }
 
-
 func TestOpenAIAdapter_DefaultModelName(t *testing.T) {
 	g := NewOpenAICompatibleAdapter("", "key", "http://localhost", "", nil)
 	if g.Name() != "glm-4" {
@@ -843,7 +842,6 @@ func TestOpenAIAdapter_ToolCallStreaming(t *testing.T) {
 	}
 }
 
-
 func TestIsRetryableTemporaryError_NilError(t *testing.T) {
 	if IsRetryableTemporaryError(nil) {
 		t.Error("nil error should not be retryable")
@@ -982,7 +980,6 @@ func TestRetryBudget_ResetUpdatesMax(t *testing.T) {
 	}
 }
 
-
 func TestDirectHTTPAdapter_Anthropic(t *testing.T) {
 	var _ DirectHTTPAdapter = &AnthropicAdapter{}
 }
@@ -990,7 +987,6 @@ func TestDirectHTTPAdapter_Anthropic(t *testing.T) {
 func TestDirectHTTPAdapter_OpenAI(t *testing.T) {
 	var _ DirectHTTPAdapter = &OpenAICompatibleAdapter{}
 }
-
 
 // Test that the JSON payload includes correct tool schema for OpenAI
 func TestOpenAIAdapter_ToolSchemaInPayload(t *testing.T) {
@@ -1087,7 +1083,6 @@ func TestOpenAIAdapter_FunctionResponseSeparateMessage(t *testing.T) {
 		t.Errorf("expected tool_call_id, got: %s", *body)
 	}
 }
-
 
 func TestAnthropicAdapter_DirectHTTPAdapterMarker(t *testing.T) {
 	a := NewAnthropicAdapter("model", "key", "", "", nil)
@@ -1344,8 +1339,8 @@ func TestAnthropicAdapter_ToolWithParametersField(t *testing.T) {
 				{
 					FunctionDeclarations: []*genai.FunctionDeclaration{
 						{
-							Name:        "param_tool",
-							Description: "Has parameters",
+							Name:                 "param_tool",
+							Description:          "Has parameters",
 							ParametersJsonSchema: map[string]any{"type": "object", "properties": map[string]any{"x": map[string]any{"type": "string"}}},
 						},
 					},

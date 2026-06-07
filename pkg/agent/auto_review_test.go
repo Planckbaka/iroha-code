@@ -627,11 +627,11 @@ func TestCheckUnsafeFindPipe(t *testing.T) {
 // TestFileHeuristicReview tests fileHeuristicReview with comprehensive table-driven cases.
 func TestFileHeuristicReview(t *testing.T) {
 	tests := []struct {
-		name     string
-		toolName string
-		filePath string
-		content  string
-		wantSafe bool
+		name         string
+		toolName     string
+		filePath     string
+		content      string
+		wantSafe     bool
 		wantInReason string
 	}{
 		// System directory blocks
@@ -718,11 +718,11 @@ func TestReviewFileOperation_HeuristicPath(t *testing.T) {
 	GlobalAutoReviewConfig = nil
 
 	tests := []struct {
-		name     string
-		toolName string
-		filePath string
-		content  string
-		wantSafe bool
+		name         string
+		toolName     string
+		filePath     string
+		content      string
+		wantSafe     bool
 		wantInReason string
 	}{
 		{
@@ -733,27 +733,27 @@ func TestReviewFileOperation_HeuristicPath(t *testing.T) {
 			wantSafe: true,
 		},
 		{
-			name:     "env_file_sensitive_path",
-			toolName: "file_write",
-			filePath: ".env",
-			content:  "DATABASE_URL=postgres://...",
-			wantSafe: false,
+			name:         "env_file_sensitive_path",
+			toolName:     "file_write",
+			filePath:     ".env",
+			content:      "DATABASE_URL=postgres://...",
+			wantSafe:     false,
 			wantInReason: "Sensitive path",
 		},
 		{
-			name:     "content_with_password",
-			toolName: "file_write",
-			filePath: "config.yaml",
-			content:  "password=supersecret",
-			wantSafe: false,
+			name:         "content_with_password",
+			toolName:     "file_write",
+			filePath:     "config.yaml",
+			content:      "password=supersecret",
+			wantSafe:     false,
 			wantInReason: "secret",
 		},
 		{
-			name:     "unknown_extension_no_llm",
-			toolName: "file_write",
-			filePath: "binary.bin",
-			content:  "some binary data",
-			wantSafe: false,
+			name:         "unknown_extension_no_llm",
+			toolName:     "file_write",
+			filePath:     "binary.bin",
+			content:      "some binary data",
+			wantSafe:     false,
 			wantInReason: "No LLM reviewer configured",
 		},
 	}
@@ -776,10 +776,10 @@ func TestReviewFileOperation_HeuristicPath(t *testing.T) {
 // TestClassifyTool tests ClassifyTool with various tool names and argument types.
 func TestClassifyTool(t *testing.T) {
 	tests := []struct {
-		name        string
-		toolName    string
-		args        any
-		wantTier    RiskTier
+		name         string
+		toolName     string
+		args         any
+		wantTier     RiskTier
 		wantInReason string
 	}{
 		// Read-only tools
@@ -830,9 +830,9 @@ func TestClassifyTool(t *testing.T) {
 // TestClassifyShellCommand tests classifyShellCommand with various commands.
 func TestClassifyShellCommand(t *testing.T) {
 	tests := []struct {
-		name        string
-		cmd         string
-		wantTier    RiskTier
+		name         string
+		cmd          string
+		wantTier     RiskTier
 		wantInReason string
 	}{
 		// Empty command

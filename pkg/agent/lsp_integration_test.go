@@ -148,7 +148,7 @@ func TestIntegration_LSP_LanguageFromPathOrError(t *testing.T) {
 	}
 
 	// Unknown extension
-	lang, err = languageFromPathOrError("config.yaml")
+	_, err = languageFromPathOrError("config.yaml")
 	if err == nil {
 		t.Error("expected error for unknown extension")
 	}
@@ -157,7 +157,7 @@ func TestIntegration_LSP_LanguageFromPathOrError(t *testing.T) {
 	}
 
 	// No extension
-	lang, err = languageFromPathOrError("Makefile")
+	_, err = languageFromPathOrError("Makefile")
 	if err == nil {
 		t.Error("expected error for no extension")
 	}

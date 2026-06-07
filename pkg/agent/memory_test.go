@@ -342,7 +342,7 @@ func TestMemoryManager_SyncToAgentsMD(t *testing.T) {
 
 func TestMemoryManager_SyncFromAgentsMD(t *testing.T) {
 	dir := t.TempDir()
-	
+
 	// Create a pre-existing AGENTS.md with two memories
 	agentsContent := `# iroha-code
 
@@ -357,7 +357,7 @@ Some purpose text.
   - *Content*:
     This is a temporary fact.
 `
-	
+
 	original, _ := os.Getwd()
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)
@@ -425,7 +425,7 @@ func TestDreamConsolidatorGates(t *testing.T) {
 
 	// Setup initial dynamic learnings / entries
 	_ = mm.Save("test_mem1", "Desc 1", MemTypeUser, "Always write tests.")
-	
+
 	// Ensure we are not in Plan Mode
 	origMode := GlobalPermissionManager.GetMode()
 	defer func() { _ = GlobalPermissionManager.SetMode(origMode) }()
@@ -464,7 +464,7 @@ func TestDreamConsolidatorGates(t *testing.T) {
 	}
 	// Release lock acquired by direct ShouldConsolidate call so Consolidate can acquire it
 	dc.releaseLock(filepath.Join(dir, ".iroha", "memory"))
-	
+
 	// Test lock clean up (Gate 7)
 	// We call Consolidate which will run ShouldConsolidate, acquire lock, do nothing, and release lock
 	phases, err := dc.Consolidate(mm, true)
@@ -557,7 +557,7 @@ func TestDreamConsolidatorPhases(t *testing.T) {
 
 func TestMemoryDreamHandler(t *testing.T) {
 	dir := t.TempDir()
-	
+
 	// Set up memory manager in this temp directory
 	original, _ := os.Getwd()
 	if err := os.Chdir(dir); err != nil {

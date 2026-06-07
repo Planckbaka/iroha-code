@@ -207,9 +207,9 @@ func TestHistoryStoreScrollUpDown(t *testing.T) {
 	s.Render(80, 10)
 
 	tests := []struct {
-		name     string
-		action   func()
-		wantOff  int
+		name    string
+		action  func()
+		wantOff int
 	}{
 		{"scroll up 3", func() { s.ScrollUp(3) }, 3},
 		{"scroll down 1", func() { s.ScrollDown(1) }, 2},
@@ -459,9 +459,9 @@ func TestHistoryStoreRenderCachingWidth(t *testing.T) {
 
 func TestHistoryStoreRenderEntryRoles(t *testing.T) {
 	tests := []struct {
-		name   string
-		entry  HistoryEntry
-		width  int
+		name  string
+		entry HistoryEntry
+		width int
 	}{
 		{"user role", HistoryEntry{Role: RoleUser, Content: "user msg"}, 80},
 		{"agent role", HistoryEntry{Role: RoleAgent, Content: "agent msg"}, 80},

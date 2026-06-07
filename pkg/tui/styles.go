@@ -30,11 +30,6 @@ var (
 
 	// cardStyleFlush is a borderless, zero-padding card used by the help overlay.
 	cardStyleFlush = lipgloss.NewStyle().Padding(0, 0).MarginTop(1).MarginBottom(1)
-
-	// cardStyleBordered is a rounded-border card used by the background dashboard.
-	cardStyleBordered = lipgloss.NewStyle().
-		Padding(0, 1).MarginTop(1).MarginBottom(1).
-		Border(lipgloss.RoundedBorder()).BorderForeground(ColorPrimary)
 )
 
 // sanitizedWidth returns a safe positive width, defaulting to 80 when the
@@ -67,8 +62,6 @@ var (
 			Foreground(ColorText).
 			MarginTop(1)
 
-
-
 	StyleToolSuccess = lipgloss.NewStyle().
 				Foreground(ColorSuccess).
 				Bold(true)
@@ -76,8 +69,6 @@ var (
 	StyleToolError = lipgloss.NewStyle().
 			Foreground(ColorDanger).
 			Bold(true)
-
-
 
 	StyleKeyHelp = lipgloss.NewStyle().
 			Foreground(ColorTextMuted).
@@ -89,8 +80,6 @@ var (
 
 	StyleStatusBar = lipgloss.NewStyle().
 			Foreground(ColorTextMuted)
-
-
 
 	// StyleSpinner styles the braille spinner frame (hoisted from per-frame
 	// allocation in the render loop).

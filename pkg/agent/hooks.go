@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
-
 )
 
 // HookManager loads hook definitions from external config files and executes them.

@@ -99,7 +99,7 @@ func RefreshToken(ctx context.Context, refreshToken string, config OAuthConfig) 
 	if err != nil {
 		return Token{}, fmt.Errorf("refresh token request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -180,7 +180,7 @@ func exchangeCode(ctx context.Context, code, verifier string, config OAuthConfig
 	if err != nil {
 		return Token{}, fmt.Errorf("token exchange request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

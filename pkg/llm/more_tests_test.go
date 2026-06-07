@@ -172,9 +172,9 @@ func (m *mockLLM) GenerateContent(ctx context.Context, req *model.LLMRequest, st
 	}
 }
 
-func (m *mockLLM) Name() string              { return "mock" }
-func (m *mockLLM) CumulativeTokens() int      { return 0 }
-func (m *mockLLM) AddTokens(int)              {}
+func (m *mockLLM) Name() string          { return "mock" }
+func (m *mockLLM) CumulativeTokens() int { return 0 }
+func (m *mockLLM) AddTokens(int)         {}
 
 func TestCollectNonStreaming_SingleResponse(t *testing.T) {
 	m := &mockLLM{

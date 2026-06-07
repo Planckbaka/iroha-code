@@ -219,7 +219,6 @@ func RenderWelcomeCard(runner *agent.CustomRunner) string {
 	return StyleWelcome.Render(sb.String())
 }
 
-
 var permModeNames = []struct {
 	Mode  agent.PermissionMode
 	Label string
@@ -778,10 +777,6 @@ func RenderToolSuccessCard(name string, args any, duration time.Duration) string
 	return fmt.Sprintf("  %s %s %s %s", tickStyled, iconStyled, textStyled, durStyled)
 }
 
-
-
-
-
 // RenderCancelCard renders a compact cancellation notice.
 func RenderCancelCard(duration time.Duration) string {
 	var sb strings.Builder
@@ -838,4 +833,3 @@ func RenderHelpDashboard() string {
 
 	return cardStyleFlush.Render(sb.String()) + "\n"
 }
-

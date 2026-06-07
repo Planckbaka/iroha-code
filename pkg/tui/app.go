@@ -780,11 +780,11 @@ func RunApp(runner *agent.CustomRunner, sessionID string, startInSessionPicker b
 }
 
 func enableMouseTracking(out io.Writer) {
-	fmt.Fprint(out, "\x1b[?1000h\x1b[?1006h")
+	_, _ = fmt.Fprint(out, "\x1b[?1000h\x1b[?1006h")
 }
 
 func disableMouseTracking(out io.Writer) {
-	fmt.Fprint(out, "\x1b[?1006l\x1b[?1000l")
+	_, _ = fmt.Fprint(out, "\x1b[?1006l\x1b[?1000l")
 }
 
 func mouseTrackingEnabled() bool {
@@ -895,7 +895,7 @@ func (a *App) handleRawSlashCommand(inputVal string) bool {
 			}
 		} else {
 			servers := agent.GlobalMCPRouter.ListServers()
-			
+
 			var sb strings.Builder
 			sb.WriteString(StyleKeyActive.Render(fmt.Sprintf("MCP Plugin Status: %d servers", len(servers))) + "\n")
 			sb.WriteString(strings.Repeat("-", 40) + "\n")
@@ -921,4 +921,3 @@ func (a *App) handleRawSlashCommand(inputVal string) bool {
 	a.history.Add(HistoryEntry{Role: RoleSystem, Content: replyLog})
 	return false
 }
-

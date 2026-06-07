@@ -13,9 +13,9 @@ import (
 
 func TestChatComponentOnStateChange(t *testing.T) {
 	tests := []struct {
-		name      string
-		oldState  TuiState
-		newState  TuiState
+		name     string
+		oldState TuiState
+		newState TuiState
 	}{
 		{"prompt to thinking", statePrompt, stateThinking},
 		{"thinking to streaming", stateThinking, stateStreaming},
@@ -38,14 +38,14 @@ func TestChatComponentOnStateChange(t *testing.T) {
 
 func TestChatComponentRenderTailTable(t *testing.T) {
 	tests := []struct {
-		name          string
-		state         TuiState
-		streamText    string
-		streamRender  string
-		welcomeLines  []string
-		confirmLines  []string
-		wantContains  []string
-		wantMinLines  int
+		name         string
+		state        TuiState
+		streamText   string
+		streamRender string
+		welcomeLines []string
+		confirmLines []string
+		wantContains []string
+		wantMinLines int
 	}{
 		{
 			name:         "statePrompt with welcome lines",
@@ -135,9 +135,9 @@ func TestChatComponentRenderThinking(t *testing.T) {
 		wantLen      int
 	}{
 		{
-			name:       "without active tool shows thinking indicator",
-			activeTool: agent.ToolStatus{},
-			wantLen:    2, // empty line + thinking line
+			name:         "without active tool shows thinking indicator",
+			activeTool:   agent.ToolStatus{},
+			wantLen:      2, // empty line + thinking line
 			wantContains: []string{"thinking"},
 		},
 		{
@@ -196,7 +196,7 @@ func TestChatComponentRenderToolProgress(t *testing.T) {
 				Running: true,
 				Args:    map[string]any{"path": "/tmp/a.go"},
 			},
-			wantNil: false,
+			wantNil:      false,
 			wantContains: []string{"file"},
 		},
 		{
@@ -207,7 +207,7 @@ func TestChatComponentRenderToolProgress(t *testing.T) {
 				StreamLines: []string{"line 1", "line 2"},
 				Args:        map[string]any{"command": "echo hello"},
 			},
-			wantNil: false,
+			wantNil:      false,
 			wantContains: []string{"cmd"},
 		},
 		{
@@ -257,12 +257,12 @@ func TestChatComponentRenderToolProgress(t *testing.T) {
 
 func TestChatComponentRenderTable(t *testing.T) {
 	tests := []struct {
-		name        string
-		state       TuiState
-		history     *HistoryStore
-		activeTool  agent.ToolStatus
-		streamText  string
-		wantMinLen  int
+		name       string
+		state      TuiState
+		history    *HistoryStore
+		activeTool agent.ToolStatus
+		streamText string
+		wantMinLen int
 	}{
 		{
 			name:       "empty with no history",

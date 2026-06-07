@@ -179,8 +179,8 @@ func TestBudgetExhaustedError(t *testing.T) {
 
 func TestIsRetryableHTTPStatus(t *testing.T) {
 	tests := []struct {
-		code    int
-		want    bool
+		code int
+		want bool
 	}{
 		{http.StatusRequestTimeout, true},
 		{http.StatusTooManyRequests, true},

@@ -90,9 +90,9 @@ func TestHookManager_RunHTTP_Timeout_Block(t *testing.T) {
 	hm := NewHookManager()
 
 	result := hm.runHTTP(HookPreToolUse, HookDef{
-		Type:     HookTypeHTTP,
-		URL:      ts.URL,
-		Timeout:  1, // 1 second timeout
+		Type:      HookTypeHTTP,
+		URL:       ts.URL,
+		Timeout:   1, // 1 second timeout
 		OnTimeout: "block",
 	}, HookContext{ToolName: "shell_run"})
 
@@ -279,8 +279,8 @@ func TestHookManager_RunCommand_Timeout_Block(t *testing.T) {
 	hm := NewHookManager()
 
 	result := hm.runCommand(HookPreToolUse, HookDef{
-		Command:  "sleep 10",
-		Timeout:  1,
+		Command:   "sleep 10",
+		Timeout:   1,
 		OnTimeout: "block",
 	}, HookContext{ToolName: "shell_run"})
 

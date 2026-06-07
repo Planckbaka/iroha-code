@@ -558,4 +558,3 @@ func TestMatches_ToolMismatch_ReturnsFalse(t *testing.T) {
 		t.Errorf("Expected 'allow' when tool name doesn't match deny rule, got %q", decision)
 	}
 }
-

@@ -281,10 +281,10 @@ func TestParseSGRMouseTable(t *testing.T) {
 			wantOK:   true,
 		},
 		{
-			name:     "incomplete sequence (no M/m terminator)",
-			input:    []byte("\x1b[<64;10;20"),
-			start:    0,
-			wantOK:   false,
+			name:   "incomplete sequence (no M/m terminator)",
+			input:  []byte("\x1b[<64;10;20"),
+			start:  0,
+			wantOK: false,
 		},
 	}
 

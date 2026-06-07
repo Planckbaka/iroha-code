@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
 )
+
 func (tm *TeamManager) StartTeammateLoop(name string) error {
 	tm.mu.RLock()
 	isolated := tm.isolationMode

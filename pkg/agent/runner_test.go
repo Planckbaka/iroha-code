@@ -612,9 +612,7 @@ func (m *mockLLMForDelegator) GenerateContent(ctx context.Context, req *model.LL
 	return func(yield func(*model.LLMResponse, error) bool) {}
 }
 
-type nonTokenTrackerModel struct {
-	mockLLMForDelegator
-}
+type nonTokenTrackerModel struct{}
 
 func (m *nonTokenTrackerModel) Name() string { return "non-tracker" }
 func (m *nonTokenTrackerModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {

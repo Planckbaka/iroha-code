@@ -913,9 +913,9 @@ func TestConfigJSON_EmptyFields(t *testing.T) {
 // TestLSPServerConfig_JSON verifies LSPServerConfig serialization.
 func TestLSPServerConfig_JSON(t *testing.T) {
 	tests := []struct {
-		name     string
-		server   LSPServerConfig
-		jsonStr  string
+		name    string
+		server  LSPServerConfig
+		jsonStr string
 	}{
 		{
 			name:    "full",
@@ -957,9 +957,9 @@ func TestLSPServerConfig_JSON(t *testing.T) {
 // support it.
 func TestDefaultProviderConfig_AnthropicBaseURL(t *testing.T) {
 	tests := []struct {
-		provider              string
-		hasAnthropicBaseURL   bool
-		anthropicBaseURL      string
+		provider            string
+		hasAnthropicBaseURL bool
+		anthropicBaseURL    string
 	}{
 		{"glm", true, "https://open.bigmodel.cn/api/anthropic"},
 		{"deepseek", true, "https://api.deepseek.com/anthropic"},

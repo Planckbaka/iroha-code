@@ -205,7 +205,7 @@ func CompactContents(contents []*genai.Content, sessionID string, llm ...model.L
 		if compactionErr != nil || summaryText == "" {
 			compactionCircuitBreaker.mu.Lock()
 			compactionCircuitBreaker.failures++
-				compactionCircuitBreaker.lastFailure = time.Now()
+			compactionCircuitBreaker.lastFailure = time.Now()
 			failures := compactionCircuitBreaker.failures
 			if failures >= 3 {
 				compactionCircuitBreaker.open = true

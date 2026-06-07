@@ -113,54 +113,10 @@ type taskTestHelper struct {
 
 func newTaskTestHelper(t *testing.T) *taskTestHelper {
 	t.Helper()
-	// Determine the tasksDir by listing through the global manager.
-	// Since we can't access tasksDir directly, we use the same resolution
-	// logic: SaveTask creates {tasksDir}/{id}.json. We save a probe task,
-	// find where it landed, then delete the probe.
-	probeID := "__tui_test_probe__"
-	probe := &agent.TaskRecord{
-		ID: probeID, Subject: "probe", Status: "pending", Owner: "agent",
-	}
-	if err := agent.GlobalTaskManager.SaveTask(probe); err != nil {
-		t.Fatalf("probe save failed: %v", err)
-	}
-	// Find the file
-	loaded, err := agent.GlobalTaskManager.GetTask(probeID)
-	if err != nil {
-		t.Fatalf("probe load failed: %v", err)
-	}
-	_ = loaded
-
-	// Now search likely directories for the probe file
-	candidates := []string{
-		filepath.Join(".", ".tasks"),
-	}
-	home, _ := os.UserHomeDir()
-	if home != "" {
-		candidates = append(candidates,
-			filepath.Join(home, ".iroha", "tasks"),
-			filepath.Join(home, ".go-claude", "tasks"),
-		)
-	}
-
-	var tasksDir string
-	for _, dir := range candidates {
-		probePath := filepath.Join(dir, probeID+".json")
-		if _, err := os.Stat(probePath); err == nil {
-			tasksDir = dir
-			break
-		}
-	}
-
-	// Delete the probe file
-	agent.GlobalTaskManager.SaveTask(&agent.TaskRecord{
-		ID: probeID, Subject: "probe", Status: "deleted", Owner: "agent",
-	})
-
+	tasksDir := agent.ResolveTasksDir()
 	if tasksDir == "" {
 		t.Fatal("could not determine tasksDir for test isolation")
 	}
-
 	return &taskTestHelper{tasksDir: tasksDir}
 }
 
@@ -584,11 +540,11 @@ func TestOnStateChangeNoOps(t *testing.T) {
 
 func TestClampScrollOffset(t *testing.T) {
 	tests := []struct {
-		name           string
-		totalLines     int
-		maxLines       int
-		scrollOffset   int
-		wantOffset     int
+		name         string
+		totalLines   int
+		maxLines     int
+		scrollOffset int
+		wantOffset   int
 	}{
 		{"zero total lines early return", 0, 20, 5, 5},
 		{"offset within bounds", 100, 80, 10, 10},
@@ -727,9 +683,9 @@ func TestAppRender_States(t *testing.T) {
 			wantSub:    []string{"Iroha Code"},
 		},
 		{
-			name:  "stateThinking renders thinking state",
-			state: stateThinking,
-			setup: func(_ *App) {},
+			name:       "stateThinking renders thinking state",
+			state:      stateThinking,
+			setup:      func(_ *App) {},
 			wantNonNil: true,
 		},
 		{
@@ -937,13 +893,13 @@ func TestHandleRawSlashCommand_AdditionalBranches(t *testing.T) {
 
 func TestFinalizeTurn_ErrorAndTokenPaths(t *testing.T) {
 	tests := []struct {
-		name          string
-		streamedText  string
-		lastError     error
-		preTokens     int
-		roundStarted  bool
-		wantState     TuiState
-		postCheck     func(t *testing.T, app *App)
+		name         string
+		streamedText string
+		lastError    error
+		preTokens    int
+		roundStarted bool
+		wantState    TuiState
+		postCheck    func(t *testing.T, app *App)
 	}{
 		{
 			name:         "error with streamed text commits both",

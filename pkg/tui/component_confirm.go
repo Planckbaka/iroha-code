@@ -129,9 +129,7 @@ func (cc *ConfirmComponent) Render(width int) []string {
 
 	card := RenderConfirmCardWithDiff(cc.prompt, cc.selectIndex, cc.diffText != "", cc.diffActive)
 
-	var content string
-	// We don't have streamedText here — just render the card
-	content = card
+	content := card
 
 	rendered := StyleAgentMsg.Render(content)
 	var lines []string
@@ -208,4 +206,3 @@ func (cc *ConfirmComponent) getEditableValue() string {
 	}
 	return ""
 }
-

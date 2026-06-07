@@ -14,9 +14,9 @@ import (
 
 func TestCheckHeredoc_Direct(t *testing.T) {
 	tests := []struct {
-		name  string
-		cmd   string
-		safe  bool
+		name   string
+		cmd    string
+		safe   bool
 		reason string
 	}{
 		{"safe_cat", "cat file.txt", true, ""},

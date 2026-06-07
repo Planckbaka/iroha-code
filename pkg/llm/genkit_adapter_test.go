@@ -112,11 +112,11 @@ func TestGenkitModelAdapter_GenerateContent_WithConfig(t *testing.T) {
 			{Role: "user", Parts: []*genai.Part{{Text: "Hello"}}},
 		},
 		Config: &genai.GenerateContentConfig{
-			Temperature:    &temp,
+			Temperature:     &temp,
 			MaxOutputTokens: 1024,
-			TopK:           &topK,
-			TopP:           &topP,
-			StopSequences:  []string{"END"},
+			TopK:            &topK,
+			TopP:            &topP,
+			StopSequences:   []string{"END"},
 			SystemInstruction: &genai.Content{
 				Parts: []*genai.Part{{Text: "Be helpful"}},
 			},

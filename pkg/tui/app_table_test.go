@@ -319,22 +319,22 @@ func TestHandleConfirmResponseTable(t *testing.T) {
 
 func TestHandlePermSelectTable(t *testing.T) {
 	tests := []struct {
-		name                string
-		mode                string
+		name                 string
+		mode                 string
 		startInSessionPicker bool
-		wantState           TuiState
+		wantState            TuiState
 	}{
 		{
-			name:                "normal mode transitions to prompt",
-			mode:                "default",
+			name:                 "normal mode transitions to prompt",
+			mode:                 "default",
 			startInSessionPicker: false,
-			wantState:           statePrompt,
+			wantState:            statePrompt,
 		},
 		{
-			name:                "session picker mode transitions to session select",
-			mode:                "default",
+			name:                 "session picker mode transitions to session select",
+			mode:                 "default",
 			startInSessionPicker: true,
-			wantState:           stateSessionSelect,
+			wantState:            stateSessionSelect,
 		},
 	}
 
@@ -374,10 +374,10 @@ func TestHandleSessionSelectWithNilService(t *testing.T) {
 
 func TestHandleNewSessionTable(t *testing.T) {
 	tests := []struct {
-		name        string
-		preTokens   int
-		wantTokens  int
-		wantState   TuiState
+		name       string
+		preTokens  int
+		wantTokens int
+		wantState  TuiState
 	}{
 		{
 			name:       "new session resets tokens and state",
@@ -423,26 +423,26 @@ func TestHandleNewSessionTable(t *testing.T) {
 
 func TestHandleRawSlashCommandTable(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		wantExit   bool
-		wantState  TuiState
-		postCheck  func(t *testing.T, app *App)
+		name      string
+		input     string
+		wantExit  bool
+		wantState TuiState
+		postCheck func(t *testing.T, app *App)
 	}{
 		{
-			name:      "/exit returns true",
-			input:     "/exit",
-			wantExit:  true,
+			name:     "/exit returns true",
+			input:    "/exit",
+			wantExit: true,
 		},
 		{
-			name:      "/quit returns true",
-			input:     "/quit",
-			wantExit:  true,
+			name:     "/quit returns true",
+			input:    "/quit",
+			wantExit: true,
 		},
 		{
-			name:     "/permission without args opens screen",
-			input:    "/permission",
-			wantExit: false,
+			name:      "/permission without args opens screen",
+			input:     "/permission",
+			wantExit:  false,
 			wantState: statePermissionSelect,
 			postCheck: func(t *testing.T, app *App) {
 				if app.screens.permSelectIndex != 1 {
@@ -567,12 +567,12 @@ func TestExecutePromptEmpty(t *testing.T) {
 
 func TestFinalizeTurnTable(t *testing.T) {
 	tests := []struct {
-		name          string
-		streamedText  string
-		lastError     error
-		preTokens     int
-		wantState     TuiState
-		postCheck     func(t *testing.T, app *App)
+		name         string
+		streamedText string
+		lastError    error
+		preTokens    int
+		wantState    TuiState
+		postCheck    func(t *testing.T, app *App)
 	}{
 		{
 			name:         "with streamedText adds agent entry",
@@ -660,11 +660,11 @@ func TestFinalizeTurnTable(t *testing.T) {
 
 func TestRenderStreamedMarkdownTable(t *testing.T) {
 	tests := []struct {
-		name       string
-		text       string
-		width      int
-		wantEmpty  bool
-		postCheck  func(t *testing.T, app *App)
+		name      string
+		text      string
+		width     int
+		wantEmpty bool
+		postCheck func(t *testing.T, app *App)
 	}{
 		{
 			name:      "empty streamedText returns empty",
@@ -839,10 +839,10 @@ func TestNotifyStateChange(t *testing.T) {
 
 func TestHandleToolStatusTable(t *testing.T) {
 	tests := []struct {
-		name        string
-		status      agent.ToolStatus
-		preStream   string
-		postCheck   func(t *testing.T, app *App)
+		name      string
+		status    agent.ToolStatus
+		preStream string
+		postCheck func(t *testing.T, app *App)
 	}{
 		{
 			name: "running tool sets active tool",

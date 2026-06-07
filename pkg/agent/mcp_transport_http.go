@@ -149,7 +149,7 @@ func (t *HTTPTransport) Close() error {
 	if err != nil {
 		return fmt.Errorf("delete session: %w", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	t.mu.Lock()
 	t.sessionID = ""
@@ -189,7 +189,7 @@ func (t *HTTPTransport) doPost(ctx context.Context, msg *JsonRpcMessage) (*JsonR
 	if err != nil {
 		return nil, fmt.Errorf("http post: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)

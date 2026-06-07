@@ -193,7 +193,7 @@ func TestHookManager_LoadFileLocked_MultipleFilesAppend(t *testing.T) {
 	// File 2
 	cfg2 := HookConfig{
 		Hooks: map[string][]HookDef{
-			"PreToolUse": {{Command: "hook2"}},
+			"PreToolUse":  {{Command: "hook2"}},
 			"PostToolUse": {{Command: "hook3"}},
 		},
 	}
@@ -319,7 +319,7 @@ func TestHookManager_MergePluginHooks(t *testing.T) {
 	}
 
 	pluginHooks := map[string][]HookDef{
-		"PreToolUse": {{Command: "plugin-pre-hook"}},
+		"PreToolUse":  {{Command: "plugin-pre-hook"}},
 		"PostToolUse": {{Command: "plugin-post-hook"}},
 	}
 
@@ -471,7 +471,7 @@ func TestHookTimeoutForEvent(t *testing.T) {
 		{HookPreCompact, 10},
 		{HookPostCompact, 10},
 		{HookSubagentStop, 10},
-		{HookNotification, 5},  // default
+		{HookNotification, 5}, // default
 	}
 
 	for _, tt := range tests {

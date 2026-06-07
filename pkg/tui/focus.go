@@ -4,9 +4,9 @@ package tui
 type InputOwner int
 
 const (
-	FocusNone       InputOwner = iota
-	FocusPrompt                // InputComponent owns buffer
-	FocusConfirmEdit           // ConfirmComponent owns buffer (edit mode)
+	FocusNone        InputOwner = iota
+	FocusPrompt                 // InputComponent owns buffer
+	FocusConfirmEdit            // ConfirmComponent owns buffer (edit mode)
 )
 
 // FocusModel manages input buffer ownership between components.

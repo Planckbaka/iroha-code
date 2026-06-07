@@ -199,7 +199,7 @@ func TestStatusBarRender(t *testing.T) {
 			wantStr:   "goal",
 		},
 		{
-			name: "zero width renders",
+			name:      "zero width renders",
 			setup:     func(sb *StatusBarComponent) {},
 			width:     0,
 			wantLines: 1,

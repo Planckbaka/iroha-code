@@ -101,8 +101,8 @@ func TestIntegration_MCP_SendNotification(t *testing.T) {
 
 	// SendNotification should not error (notifications have no ID)
 	err := client.SendNotification("notifications/progress", map[string]any{
-		"progress":     50,
-		"total":        100,
+		"progress":      50,
+		"total":         100,
 		"progressToken": "test-token",
 	})
 	if err != nil {

@@ -334,8 +334,8 @@ func TestWatchdog_ConcurrentDeadLetters(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			w.EnqueueDeadLetter(IPCMessage{
-				Type: "msg",
-				ID:   "concurrent-msg",
+				Type:    "msg",
+				ID:      "concurrent-msg",
 				Payload: json.RawMessage(`{"i":0}`),
 			})
 		}(i)

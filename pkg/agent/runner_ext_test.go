@@ -114,7 +114,7 @@ func TestEstimateContentsTokens_WithFunctionCall(t *testing.T) {
 		{
 			Role: "model",
 			Parts: []*genai.Part{
-				{Text: "Running command"},                    // 15 bytes
+				{Text: "Running command"},                       // 15 bytes
 				{FunctionCall: &genai.FunctionCall{Args: args}}, // len(argsJSON) bytes
 			},
 		},
@@ -803,9 +803,9 @@ type recoveryStep struct {
 }
 
 type contextRecoveryMock struct {
-	calls       int
-	steps       []recoveryStep          // used if stepsPerCall is nil
-	stepsPerCall [][]recoveryStep       // per-call steps
+	calls        int
+	steps        []recoveryStep   // used if stepsPerCall is nil
+	stepsPerCall [][]recoveryStep // per-call steps
 }
 
 func (m *contextRecoveryMock) Name() string { return "context-recovery-mock" }
@@ -838,12 +838,12 @@ func (m *contextRecoveryMock) GenerateContent(_ context.Context, _ *model.LLMReq
 
 // retryDirectHTTPMock is a DirectHTTPAdapter mock for retry tests.
 type retryDirectHTTPMock struct {
-	calls       int
-	steps       []recoveryStep
+	calls        int
+	steps        []recoveryStep
 	stepsPerCall [][]recoveryStep
 }
 
-func (m *retryDirectHTTPMock) Name() string { return "retry-direct-http-mock" }
+func (m *retryDirectHTTPMock) Name() string       { return "retry-direct-http-mock" }
 func (m *retryDirectHTTPMock) DirectHTTPAdapter() {}
 
 func (m *retryDirectHTTPMock) GenerateContent(_ context.Context, _ *model.LLMRequest, _ bool) iter.Seq2[*model.LLMResponse, error] {

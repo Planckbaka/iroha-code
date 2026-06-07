@@ -12,8 +12,8 @@ import (
 
 func TestRawRendererResetTable(t *testing.T) {
 	tests := []struct {
-		name        string
-		preDraw     []string
+		name    string
+		preDraw []string
 	}{
 		{"reset after draw", []string{"hello", "world"}},
 		{"reset with no prior draw", nil},

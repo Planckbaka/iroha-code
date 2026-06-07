@@ -8,7 +8,7 @@ import (
 	"github.com/muesli/termenv"
 )
 
-// RawRenderer manages frame buffers, terminal sizes, and performs flicker-free 
+// RawRenderer manages frame buffers, terminal sizes, and performs flicker-free
 // differential redraws on the terminal's main screen.
 type RawRenderer struct {
 	out           io.Writer

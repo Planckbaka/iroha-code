@@ -114,8 +114,7 @@ func (sc *ScreenComponent) SetSessions(sessions []SessionEntry) {
 }
 
 // Render produces the selection screen output.
-func (sc *ScreenComponent) Render(width int) []string {
-	width = sanitizedWidth(width)
+func (sc *ScreenComponent) Render(_ int) []string {
 
 	if sc.screenType == "permission" {
 		return sc.renderPermissionScreen()

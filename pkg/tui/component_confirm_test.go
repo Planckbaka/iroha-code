@@ -77,10 +77,10 @@ func TestConfirmSetPromptWithDiff(t *testing.T) {
 
 func TestConfirmHandleInputNavigation(t *testing.T) {
 	tests := []struct {
-		name       string
-		selectIdx  int
-		key        Key
-		wantIdx    int
+		name      string
+		selectIdx int
+		key       Key
+		wantIdx   int
 	}{
 		{"right from 0", 0, Key{Type: KeyRight}, 1},
 		{"right from 4 wraps to 0", 4, Key{Type: KeyRight}, 0},

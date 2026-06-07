@@ -95,9 +95,9 @@ func TestSeverityToString(t *testing.T) {
 		{2, "warning"},
 		{3, "info"},
 		{4, "hint"},
-		{0, "info"},   // default
-		{99, "info"},  // default
-		{-1, "info"},  // default
+		{0, "info"},  // default
+		{99, "info"}, // default
+		{-1, "info"}, // default
 	}
 
 	for _, tt := range tests {

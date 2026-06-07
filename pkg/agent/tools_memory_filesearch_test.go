@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-
 func TestMemoryUpdateHandler_Success(t *testing.T) {
 	dir := t.TempDir()
 	origCwd, _ := os.Getwd()
@@ -81,7 +80,6 @@ func TestMemoryUpdateHandler_InvalidType(t *testing.T) {
 		t.Error("expected OK=false for invalid type")
 	}
 }
-
 
 func TestMemoryDeleteHandler_Success(t *testing.T) {
 	dir := t.TempDir()
@@ -160,7 +158,6 @@ func TestMemoryDeleteHandler_RemovesFile(t *testing.T) {
 		t.Error("memory file should be removed after delete")
 	}
 }
-
 
 // setupFileTestDir creates a temp dir, changes CWD to it, and disables sandbox.
 // Returns the temp dir path. Cleanup restores original state.
@@ -335,7 +332,6 @@ func TestListDirHandler_EmptyDir(t *testing.T) {
 		t.Errorf("expected 0 entries for empty dir, got %d", len(res.Entries))
 	}
 }
-
 
 func TestFindHandler_BasicGlob(t *testing.T) {
 	dir := setupFileTestDir(t)

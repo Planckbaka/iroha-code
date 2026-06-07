@@ -30,6 +30,9 @@ type runnerHooks struct {
 }
 
 func (h runnerHooks) NagReminder() string {
+	if h.todo == nil {
+		return ""
+	}
 	if h.todo.RoundsSinceUpdate() >= 3 {
 		return "📌 [System] To ensure continuity of subsequent code changes, please update your todo plan progress before executing the current step."
 	}
@@ -37,7 +40,9 @@ func (h runnerHooks) NagReminder() string {
 }
 
 func (h runnerHooks) NoteRound() {
-	h.todo.NoteRoundWithoutUpdate()
+	if h.todo != nil {
+		h.todo.NoteRoundWithoutUpdate()
+	}
 }
 
 func buildSystemPrompt() string {

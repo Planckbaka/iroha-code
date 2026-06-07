@@ -11,6 +11,7 @@ import (
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
+
 func extractStickyBlocks(contents []*genai.Content) []*genai.Content {
 	var sticky []*genai.Content
 	for _, c := range contents {
