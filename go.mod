@@ -9,7 +9,7 @@ require (
 	github.com/firebase/genkit/go v1.8.0
 	github.com/google/uuid v1.6.0
 	github.com/muesli/termenv v0.16.0
-	golang.org/x/net v0.54.0
+	golang.org/x/net v0.55.0
 	golang.org/x/term v0.43.0
 	google.golang.org/adk v1.2.1-0.20260519122726-f2aee5301649
 	google.golang.org/genai v1.57.0
@@ -80,7 +80,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	google.golang.org/api v0.279.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260511170946-3700d4141b60 // indirect
