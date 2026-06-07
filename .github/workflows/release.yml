@@ -9,7 +9,20 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    name: Pre-release tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+      - run: go test -race -count=1 -timeout=5m ./...
+
   release:
+    name: Release
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +31,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.26.x"
+          cache: true
       - uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
